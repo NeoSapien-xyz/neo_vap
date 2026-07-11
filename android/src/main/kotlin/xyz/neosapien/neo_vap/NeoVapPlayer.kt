@@ -28,6 +28,10 @@ class NeoVapPlayer(
     private var renderer: NeoVapRenderer? = null
 
     private fun ensureInitialized(assetPath: String) {
+        // ponytail: the renderer is sized once from the first asset's vapc. Safe
+        // because an intro and its loop always share geometry (verified for all
+        // VAP clip pairs). A later asset with different geometry on the SAME
+        // texture would mis-crop — recreate the renderer per-play if that arises.
         if (player != null) return
 
         val key = lookupKey(assetPath)

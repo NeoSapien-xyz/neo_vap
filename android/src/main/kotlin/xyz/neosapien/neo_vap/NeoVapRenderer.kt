@@ -39,6 +39,7 @@ class NeoVapRenderer(
     private var eglContext: EGLContext = EGL14.EGL_NO_CONTEXT
     private var eglConfig: EGLConfig? = null
     private var windowSurface: EGLSurface = EGL14.EGL_NO_SURFACE
+    private var pbufferSurface: EGLSurface = EGL14.EGL_NO_SURFACE
 
     private var oesTexId = 0
     private var program = 0
@@ -71,11 +72,21 @@ class NeoVapRenderer(
     /** Block until the input [Surface] exists, then hand it to the caller. */
     fun awaitInputSurface(): Surface {
         val latch = CountDownLatch(1)
+        var error: Throwable? = null
         handler.post {
-            initGl()
-            latch.countDown()
+            // finally-countDown so a GL init failure surfaces as an exception on
+            // the caller instead of ANR-ing the main thread on the latch; catch
+            // so it doesn't crash the render thread as an uncaught exception.
+            try {
+                initGl()
+            } catch (t: Throwable) {
+                error = t
+            } finally {
+                latch.countDown()
+            }
         }
         latch.await()
+        error?.let { throw RuntimeException("neo_vap GL init failed: ${it.message}", it) }
         return inputSurface
     }
 
@@ -99,11 +110,23 @@ class NeoVapRenderer(
     fun release() {
         handler.post {
             released = true
+            // Bind the pbuffer so GL deletes are valid even if the window surface
+            // was already destroyed (background teardown).
+            if (pbufferSurface != EGL14.EGL_NO_SURFACE) {
+                EGL14.eglMakeCurrent(eglDisplay, pbufferSurface, pbufferSurface, eglContext)
+            }
             if (::surfaceTexture.isInitialized) surfaceTexture.release()
             if (::inputSurface.isInitialized) inputSurface.release()
             if (program != 0) GLES20.glDeleteProgram(program)
             if (oesTexId != 0) GLES20.glDeleteTextures(1, intArrayOf(oesTexId), 0)
             destroyWindowSurface()
+            if (pbufferSurface != EGL14.EGL_NO_SURFACE) {
+                EGL14.eglDestroySurface(eglDisplay, pbufferSurface)
+                pbufferSurface = EGL14.EGL_NO_SURFACE
+            }
+            EGL14.eglMakeCurrent(
+                eglDisplay, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT,
+            )
             if (eglContext != EGL14.EGL_NO_CONTEXT) {
                 EGL14.eglDestroyContext(eglDisplay, eglContext)
             }
@@ -133,13 +156,14 @@ class NeoVapRenderer(
             eglDisplay, eglConfig, EGL14.EGL_NO_CONTEXT,
             intArrayOf(EGL14.EGL_CONTEXT_CLIENT_VERSION, 2, EGL14.EGL_NONE), 0,
         )
-        // Need a current context to create the OES texture + program. Use a 1x1
-        // pbuffer until the real window surface arrives.
-        val pbuffer = EGL14.eglCreatePbufferSurface(
+        // Need a current context to create the OES texture + program. Keep a 1x1
+        // pbuffer as the fallback draw surface whenever no window surface is
+        // bound (before the first, and after background teardown).
+        pbufferSurface = EGL14.eglCreatePbufferSurface(
             eglDisplay, eglConfig,
             intArrayOf(EGL14.EGL_WIDTH, 1, EGL14.EGL_HEIGHT, 1, EGL14.EGL_NONE), 0,
         )
-        EGL14.eglMakeCurrent(eglDisplay, pbuffer, pbuffer, eglContext)
+        EGL14.eglMakeCurrent(eglDisplay, pbufferSurface, pbufferSurface, eglContext)
 
         oesTexId = IntArray(1).also { GLES20.glGenTextures(1, it, 0) }[0]
         GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, oesTexId)
