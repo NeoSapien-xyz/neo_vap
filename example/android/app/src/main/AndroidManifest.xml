@@ -30,6 +30,12 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- U4 Impeller fallback ladder (KTD, Risks). Default = Vulkan Impeller.
+             If external-texture rendering stutters/breaks on a device class,
+             uncomment to force the OpenGLES Impeller backend (one-line downgrade,
+             no code change). Last resort below that is disabling Impeller (Skia). -->
+        <!-- <meta-data android:name="io.flutter.embedding.android.ImpellerBackend" android:value="opengles" /> -->
+        <!-- <meta-data android:name="io.flutter.embedding.android.EnableImpeller" android:value="false" /> -->
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

@@ -71,6 +71,15 @@ android {
 }
 
 dependencies {
+    // Media3 (ExoPlayer) — Google-maintained decode/loop stack (KTD-3).
+    // ponytail: pinned; bump when a newer media3 stable lands.
+    val media3 = "1.5.1"
+    implementation("androidx.media3:media3-exoplayer:$media3")
+    implementation("androidx.media3:media3-common:$media3")
+
     testImplementation("org.jetbrains.kotlin:kotlin-test")
     testImplementation("org.mockito:mockito-core:5.0.0")
+    // Real org.json on the JVM test classpath — android.jar stubs it ("Stub!"),
+    // which would break the Vapc parser unit test (fine on-device).
+    testImplementation("org.json:json:20240303")
 }
