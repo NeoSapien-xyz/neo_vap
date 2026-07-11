@@ -180,6 +180,32 @@ void main() {
     expect(c.state, NeoVapState.ended);
   });
 
+  test('controllers share one default backend (single native subscription)', () {
+    // Guards the fix for the shared-eventSink race: if this regresses to a
+    // per-controller MethodChannelNeoVap, each opens its own EventChannel and a
+    // disposing controller's cancel nulls the shared native sink.
+    final a = NeoVapController(videoAsset: 'a.mp4');
+    final b = NeoVapController(videoAsset: 'b.mp4');
+    expect(identical(a.backend, b.backend), isTrue);
+    a.dispose();
+    b.dispose();
+  });
+
+  test('shared backend demuxes events by textureId; dispose one keeps other',
+      () async {
+    backend.allocatedId = 1;
+    final a = NeoVapController(videoAsset: 'a.mp4', backend: backend);
+    await a.initialize();
+    backend.allocatedId = 2;
+    final b = NeoVapController(videoAsset: 'b.mp4', backend: backend);
+    await b.initialize();
+
+    a.dispose(); // must not starve b
+    backend.emit(const NeoVapEvent(2, NeoVapEventType.firstFrame));
+    await pumpEventQueue();
+    expect(b.showPlaceholder, isFalse);
+  });
+
   test('stop() ignores a later stale ended event', () async {
     var ended = false;
     final c = make(onEnd: () => ended = true);

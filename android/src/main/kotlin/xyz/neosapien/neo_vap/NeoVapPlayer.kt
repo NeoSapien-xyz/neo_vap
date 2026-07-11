@@ -53,7 +53,10 @@ class NeoVapPlayer(
             setVideoSurface(inputSurface)
             addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(state: Int) {
-                    if (state == Player.STATE_ENDED) emit("ended", null)
+                    if (state == Player.STATE_ENDED) {
+                        android.util.Log.d("NeoVapDbg", "STATE_ENDED tex=$textureId")
+                        emit("ended", null)
+                    }
                 }
 
                 override fun onPlayerError(error: PlaybackException) {

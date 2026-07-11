@@ -47,7 +47,19 @@ class NeoVapController extends ChangeNotifier {
     this.onEnd,
     this.onError,
     this.onFirstFrame,
-  }) : _backend = backend ?? MethodChannelNeoVap();
+  }) : _backend = backend ?? _sharedBackend;
+
+  /// One backend for the whole app: a single [MethodChannelNeoVap] means a
+  /// single native EventChannel subscription, so a disposing controller's
+  /// stream-cancel never nulls the shared native event sink out from under a
+  /// freshly-created controller (the intro→loop event-drop race). Events are
+  /// demuxed per controller by texture id in [_onEvent].
+  static final NeoVapBackend _sharedBackend = MethodChannelNeoVap();
+
+  /// The backend this controller uses. Exposed only so tests can assert the
+  /// shared-backend invariant.
+  @visibleForTesting
+  NeoVapBackend get backend => _backend;
 
   /// The looping clip.
   final String videoAsset;
