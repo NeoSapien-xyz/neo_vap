@@ -31,12 +31,11 @@ enum NeoVapState {
 }
 
 /// Owns a single reusable texture + player for one animation and drives the
-/// intro→loop sequence (KTD-7). The controller is the unit of playback state;
-/// screens hold one and hand it to a [NeoVapView].
+/// intro→loop sequence. The controller is the unit of playback state; screens
+/// hold one and hand it to a [NeoVapView].
 ///
-/// The placeholder is shown until the real first frame renders and re-shown on
-/// error — driven entirely by native events, never a timer (KTD-6 / the
-/// light_indicators_screen lesson).
+/// The placeholder shows until the first real frame renders and re-shows on
+/// error — driven by native events, never a timer.
 class NeoVapController extends ChangeNotifier {
   NeoVapController({
     required this.videoAsset,
@@ -47,11 +46,10 @@ class NeoVapController extends ChangeNotifier {
     this.onFirstFrame,
   }) : _backend = backend ?? _sharedBackend;
 
-  /// One backend for the whole app: a single [MethodChannelNeoVap] means a
-  /// single native EventChannel subscription, so a disposing controller's
-  /// stream-cancel never nulls the shared native event sink out from under a
-  /// freshly-created controller (the intro→loop event-drop race). Events are
-  /// demuxed per controller by texture id in [_onEvent].
+  /// One shared backend for the whole app — a single EventChannel subscription,
+  /// so a disposing controller's stream-cancel can't null the native sink out
+  /// from under a freshly-created one (the intro→loop event-drop race). Events
+  /// are demuxed per controller by texture id in [_onEvent].
   static final NeoVapBackend _sharedBackend = MethodChannelNeoVap();
 
   /// The backend this controller uses. Exposed only so tests can assert the
@@ -154,9 +152,9 @@ class NeoVapController extends ChangeNotifier {
         notifyListeners();
         onFirstFrame?.call();
       case NeoVapEventType.ended:
-        // The intro→loop sequence never ends natively, so 'ended' means a
-        // genuinely finite play finished. Only act while actively looping — a
-        // stale 'ended' after stop() must not resurrect playback or misfire.
+        // Intro→loop never ends natively, so 'ended' means a finite play truly
+        // finished. Gated on playingLoop so a stale event after stop() can't
+        // resurrect playback or misfire onEnd.
         if (_state == NeoVapState.playingLoop) {
           _setState(NeoVapState.ended);
           onEnd?.call();
@@ -198,16 +196,14 @@ class NeoVapController extends ChangeNotifier {
 class NeoVap {
   NeoVap._();
 
-  /// Warm the native decode + composite pipeline once at app init (KTD-6 / U5)
-  /// so the first animation renders without the cold-start compile/allocate
-  /// stall. Fire-and-forget; safe to call repeatedly — native warms once per
-  /// process. Uses the same shared backend as every [NeoVapController] (one
-  /// native EventChannel subscription).
+  /// Warm the native decode + composite pipeline once at app init so the first
+  /// animation renders without the cold-start compile/allocate stall.
+  /// Fire-and-forget; safe to call repeatedly — native warms once per process.
   static Future<void> prewarm({String? warmupAsset}) =>
       NeoVapController._sharedBackend
           .prewarm(warmupAsset: warmupAsset)
-          // Best-effort: a platform with no native prewarm handler (iOS until U3)
-          // rejects with MissingPluginException; swallow so a fire-and-forget call
-          // never surfaces an unhandled async error. Native logs real warm failures.
+          // A platform with no native prewarm handler rejects with
+          // MissingPluginException; swallow so this fire-and-forget call never
+          // surfaces an unhandled async error. Native logs real warm failures.
           .catchError((Object _) {});
 }

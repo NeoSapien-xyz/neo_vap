@@ -28,10 +28,9 @@ class NeoVapPlayer(
     private var renderer: NeoVapRenderer? = null
 
     private fun ensureInitialized(assetPath: String) {
-        // ponytail: the renderer is sized once from the first asset's vapc. Safe
-        // because an intro and its loop always share geometry (verified for all
-        // VAP clip pairs). A later asset with different geometry on the SAME
-        // texture would mis-crop — recreate the renderer per-play if that arises.
+        // ponytail: sized once from the first asset's vapc — safe since intro/loop
+        // always share geometry. A later asset with different geometry on the same
+        // texture would mis-crop; recreate the renderer per-play if that happens.
         if (player != null) return
 
         val key = lookupKey(assetPath)
@@ -119,6 +118,6 @@ class NeoVapPlayer(
         FlutterInjector.instance().flutterLoader().getLookupKeyForAsset(assetPath)
 
     companion object {
-        private const val LOOP_FOREVER = -1
+        internal const val LOOP_FOREVER = -1
     }
 }

@@ -37,28 +37,21 @@ abstract class NeoVapBackend {
   /// Register a texture with the engine and return its id.
   Future<int> allocateTexture();
 
-  /// Warm the decoder + shader pipeline (KTD-6). Optionally decodes one frame
-  /// of [warmupAsset] to force pipeline-state compilation at app init.
-  // ponytail: part of the native contract; wired to an app-init call in U5
-  // (cold-start prewarm). Defined here so the channel protocol is complete.
+  /// Warm the decoder + shader pipeline at app init so the first play skips the
+  /// cold-start compile/allocate stall. [warmupAsset], if given, decodes one
+  /// frame to force pipeline-state compilation.
   Future<void> prewarm({String? warmupAsset});
 
-  /// Preroll/prepare [asset] on [textureId] without displaying it, so the next
-  /// clip in a sequence starts instantly.
-  Future<void> prepare(int textureId, String asset);
-
   /// Play [asset] on [textureId]. [repeat] uses [kNeoVapLoopForever] /
-  /// [kNeoVapPlayOnce] (or any positive count). [keepLastFrame] holds the final
-  /// frame after a finite play instead of clearing to transparent.
+  /// [kNeoVapPlayOnce] (or any positive count).
   ///
-  /// When [nextAsset] is given, [asset] plays once and then [nextAsset] loops
-  /// forever — chained gaplessly by the native player (no event round-trip),
-  /// which is how the intro→loop sequence stays seamless and race-proof.
+  /// With [nextAsset], [asset] plays once then [nextAsset] loops forever —
+  /// chained gaplessly by the native player (no event round-trip), which keeps
+  /// the intro→loop sequence seamless and race-proof.
   Future<void> play(
     int textureId,
     String asset, {
     int repeat = kNeoVapLoopForever,
-    bool keepLastFrame = true,
     String? nextAsset,
   });
 
@@ -98,24 +91,16 @@ class MethodChannelNeoVap implements NeoVapBackend {
       _method.invokeMethod<void>('prewarm', {'warmupAsset': warmupAsset});
 
   @override
-  Future<void> prepare(int textureId, String asset) => _method.invokeMethod<void>(
-        'prepare',
-        {'textureId': textureId, 'asset': asset},
-      );
-
-  @override
   Future<void> play(
     int textureId,
     String asset, {
     int repeat = kNeoVapLoopForever,
-    bool keepLastFrame = true,
     String? nextAsset,
   }) =>
       _method.invokeMethod<void>('play', {
         'textureId': textureId,
         'asset': asset,
         'repeat': repeat,
-        'keepLastFrame': keepLastFrame,
         'nextAsset': nextAsset,
       });
 

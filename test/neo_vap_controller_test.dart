@@ -23,15 +23,10 @@ class FakeBackend implements NeoVapBackend {
   Future<void> prewarm({String? warmupAsset}) async => calls.add('prewarm');
 
   @override
-  Future<void> prepare(int textureId, String asset) async =>
-      calls.add('prepare:$asset');
-
-  @override
   Future<void> play(
     int textureId,
     String asset, {
     int repeat = kNeoVapLoopForever,
-    bool keepLastFrame = true,
     String? nextAsset,
   }) async =>
       calls.add(

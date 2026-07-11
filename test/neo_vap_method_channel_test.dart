@@ -70,15 +70,13 @@ void main() {
       expect(call.arguments['repeat'], -1);
     });
 
-    test('stop / prepare / dispose / prewarm each invoke their method',
-        () async {
+    test('stop / dispose / prewarm each invoke their method', () async {
       await backend.stop(1);
-      await backend.prepare(1, 'a.mp4');
       await backend.dispose(1);
       await backend.prewarm(warmupAsset: 'w.mp4');
       expect(
         calls.map((c) => c.method),
-        ['stop', 'prepare', 'dispose', 'prewarm'],
+        ['stop', 'dispose', 'prewarm'],
       );
     });
   });

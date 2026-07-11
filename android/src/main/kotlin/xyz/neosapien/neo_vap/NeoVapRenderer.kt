@@ -44,6 +44,11 @@ class NeoVapRenderer(
 
     private var oesTexId = 0
     private var program = 0
+    // Resolved once in configureProgram — the program is linked exactly once, so
+    // the locations never change. uSTMatrix is the only per-frame uniform.
+    private var aPosLoc = 0
+    private var aTexLoc = 0
+    private var uSTMatrixLoc = 0
     private lateinit var surfaceTexture: SurfaceTexture
     lateinit var inputSurface: Surface
         private set
@@ -86,13 +91,12 @@ class NeoVapRenderer(
                 latch.countDown()
             }
         }
-        // Bound the wait: initGl() posts to the render thread, so a wedged native
-        // EGL/GL call (some drivers hang) would block the caller — the MAIN thread
-        // on a real play — forever, an ANR. On timeout, throw so the caller's
-        // catch runs (play fails recoverably, placeholder stays) instead. 3s is
-        // well under Android's 5s ANR threshold yet generous for slow first-init.
-        // Caveat: this bounds the caller's wait only — a truly wedged render
-        // HandlerThread can't be force-killed from Kotlin and stays leaked.
+        // Bound the wait: a wedged native EGL/GL call (some drivers hang) would
+        // otherwise block the caller — the main thread on a real play — forever,
+        // an ANR. Timeout throws so the caller's catch runs instead (recoverable,
+        // placeholder stays). 3s is under Android's 5s ANR threshold. Caveat: this
+        // bounds only the caller's wait — a wedged render thread itself can't be
+        // force-killed and stays leaked.
         if (!latch.await(GL_INIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
             throw RuntimeException("neo_vap GL init timed out after ${GL_INIT_TIMEOUT_SECONDS}s")
         }
@@ -195,12 +199,38 @@ class NeoVapRenderer(
         )
 
         program = buildProgram()
+        configureProgram()
 
         surfaceTexture = SurfaceTexture(oesTexId).apply {
             setDefaultBufferSize(info.videoWidth, info.videoHeight)
             setOnFrameAvailableListener { handler.post { drawFrame() } }
         }
         inputSurface = Surface(surfaceTexture)
+    }
+
+    /** Cache the shader locations and push the frame-invariant uniforms once. */
+    private fun configureProgram() {
+        GLES20.glUseProgram(program)
+        aPosLoc = GLES20.glGetAttribLocation(program, "aPos")
+        aTexLoc = GLES20.glGetAttribLocation(program, "aTex")
+        uSTMatrixLoc = GLES20.glGetUniformLocation(program, "uSTMatrix")
+        GLES20.glEnableVertexAttribArray(aPosLoc)
+        GLES20.glEnableVertexAttribArray(aTexLoc)
+        GLES20.glUniform2f(
+            GLES20.glGetUniformLocation(program, "uVideoSize"),
+            info.videoWidth.toFloat(), info.videoHeight.toFloat(),
+        )
+        GLES20.glUniform4f(
+            GLES20.glGetUniformLocation(program, "uRgbRect"),
+            info.rgbFrame.x.toFloat(), info.rgbFrame.y.toFloat(),
+            info.rgbFrame.w.toFloat(), info.rgbFrame.h.toFloat(),
+        )
+        GLES20.glUniform4f(
+            GLES20.glGetUniformLocation(program, "uAlphaRect"),
+            info.aFrame.x.toFloat(), info.aFrame.y.toFloat(),
+            info.aFrame.w.toFloat(), info.aFrame.h.toFloat(),
+        )
+        GLES20.glUniform1i(GLES20.glGetUniformLocation(program, "uTex"), 0)
     }
 
     private fun createWindowSurface() {
@@ -232,35 +262,15 @@ class NeoVapRenderer(
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
 
         GLES20.glUseProgram(program)
-        val aPos = GLES20.glGetAttribLocation(program, "aPos")
-        val aTex = GLES20.glGetAttribLocation(program, "aTex")
-        quad.position(0)
-        GLES20.glVertexAttribPointer(aPos, 2, GLES20.GL_FLOAT, false, 16, quad)
-        GLES20.glEnableVertexAttribArray(aPos)
-        quad.position(2)
-        GLES20.glVertexAttribPointer(aTex, 2, GLES20.GL_FLOAT, false, 16, quad)
-        GLES20.glEnableVertexAttribArray(aTex)
+        GLES20.glUniformMatrix4fv(uSTMatrixLoc, 1, false, stMatrix, 0)
 
-        GLES20.glUniformMatrix4fv(
-            GLES20.glGetUniformLocation(program, "uSTMatrix"), 1, false, stMatrix, 0,
-        )
-        GLES20.glUniform2f(
-            GLES20.glGetUniformLocation(program, "uVideoSize"),
-            info.videoWidth.toFloat(), info.videoHeight.toFloat(),
-        )
-        GLES20.glUniform4f(
-            GLES20.glGetUniformLocation(program, "uRgbRect"),
-            info.rgbFrame.x.toFloat(), info.rgbFrame.y.toFloat(),
-            info.rgbFrame.w.toFloat(), info.rgbFrame.h.toFloat(),
-        )
-        GLES20.glUniform4f(
-            GLES20.glGetUniformLocation(program, "uAlphaRect"),
-            info.aFrame.x.toFloat(), info.aFrame.y.toFloat(),
-            info.aFrame.w.toFloat(), info.aFrame.h.toFloat(),
-        )
+        quad.position(0)
+        GLES20.glVertexAttribPointer(aPosLoc, 2, GLES20.GL_FLOAT, false, 16, quad)
+        quad.position(2)
+        GLES20.glVertexAttribPointer(aTexLoc, 2, GLES20.GL_FLOAT, false, 16, quad)
+
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, oesTexId)
-        GLES20.glUniform1i(GLES20.glGetUniformLocation(program, "uTex"), 0)
 
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
         EGL14.eglSwapBuffers(eglDisplay, windowSurface)

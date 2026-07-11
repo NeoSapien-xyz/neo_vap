@@ -44,7 +44,7 @@ class VapcRect {
 /// Parsed contents of a VAP `vapc` atom's `info` object.
 ///
 /// Drives the alpha-composite shader (rgb/alpha crop regions) and the widget's
-/// content aspect ratio. See KTD-2 in the plan.
+/// content aspect ratio.
 class VapcInfo {
   const VapcInfo({
     required this.version,

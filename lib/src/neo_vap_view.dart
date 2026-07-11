@@ -5,8 +5,8 @@ import 'neo_vap_controller.dart';
 /// Plays a transparent (alpha) VAP animation into a Flutter [Texture].
 ///
 /// Sizing is ordinary Dart layout — [fit] applied against the clip's content
-/// aspect ([aspectRatio]) — identically on iOS and Android (KTD-1a). There is
-/// no `Platform.isIOS` branch and no `Transform.scale` here or at the call site.
+/// aspect ([aspectRatio]) — identically on iOS and Android. There is no
+/// `Platform.isIOS` branch and no `Transform.scale` here or at the call site.
 ///
 /// A [placeholderAsset] image sits above the texture and fades out on the first
 /// rendered frame (event-driven, never a timer), then fades back in on error.
@@ -130,7 +130,6 @@ class _NeoVapViewState extends State<NeoVapView> {
     final texture = Texture(textureId: textureId);
     final ar = widget.aspectRatio;
     if (ar == null) return texture;
-    // Fit the content-aspect texture into the available box per [fit].
     return FittedBox(
       fit: widget.fit,
       clipBehavior: Clip.hardEdge,

@@ -55,13 +55,11 @@ class NeoVapPlugin :
                 "play" -> {
                     player(call)?.play(
                         call.arg("asset"),
-                        call.argument<Int>("repeat") ?: -1,
+                        call.argument<Int>("repeat") ?: NeoVapPlayer.LOOP_FOREVER,
                         call.argument<String>("nextAsset"),
                     )
                     result.success(null)
                 }
-                // Preroll is handled natively by the intro→loop playlist; no-op.
-                "prepare" -> result.success(null)
                 "stop" -> {
                     player(call)?.stop()
                     result.success(null)
@@ -82,16 +80,14 @@ class NeoVapPlugin :
     }
 
     /**
-     * Warm the GL driver + shader compiler once per process (KTD-6, U5) so the
-     * first real `play` doesn't pay the cold EGL-init + program-compile stall.
-     * Runs a throwaway [NeoVapRenderer] init off the main thread and releases it;
+     * Warm the GL driver + shader compiler once per process so the first real
+     * `play` doesn't pay the cold EGL-init + program-compile stall. Runs a
+     * throwaway [NeoVapRenderer] init off the main thread and releases it;
      * best-effort, so any failure just means the first play pays full cold-start.
      *
-     * ponytail: GL/compiler warm only — the deterministic cold-start win. The
-     * MediaCodec decoder warm the plan's `warmupAsset` implies is skipped: the
-     * intro→loop playlist is already gapless and ExoPlayer prepares fast. Add a
-     * 1-frame decode warm here (keyed off `warmupAsset`) only if profiling shows
-     * first-play codec latency still hurts.
+     * ponytail: GL/compiler warm only, not the decoder — intro→loop is already
+     * gapless and ExoPlayer prepares fast. Add a 1-frame decode warm keyed off
+     * `warmupAsset` if profiling shows first-play codec latency still hurts.
      */
     private fun prewarm() {
         if (warmed) return
