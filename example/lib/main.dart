@@ -54,7 +54,10 @@ class _MyAppState extends State<MyApp> {
                       key: ValueKey(_selected),
                       videoAsset: clip.video,
                       introAsset: clip.intro,
-                      fit: BoxFit.contain,
+                      // cover for gunmetal to zoom past its big transparent margins
+                      fit: _selected.startsWith('gunmetal')
+                          ? BoxFit.cover
+                          : BoxFit.contain,
                       aspectRatio: clip.aspect,
                       onError: (m) => debugPrint('neo_vap error: $m'),
                     ),
