@@ -193,3 +193,21 @@ class NeoVapController extends ChangeNotifier {
     super.dispose();
   }
 }
+
+/// App-level `neo_vap` entry points not tied to a single [NeoVapController].
+class NeoVap {
+  NeoVap._();
+
+  /// Warm the native decode + composite pipeline once at app init (KTD-6 / U5)
+  /// so the first animation renders without the cold-start compile/allocate
+  /// stall. Fire-and-forget; safe to call repeatedly — native warms once per
+  /// process. Uses the same shared backend as every [NeoVapController] (one
+  /// native EventChannel subscription).
+  static Future<void> prewarm({String? warmupAsset}) =>
+      NeoVapController._sharedBackend
+          .prewarm(warmupAsset: warmupAsset)
+          // Best-effort: a platform with no native prewarm handler (iOS until U3)
+          // rejects with MissingPluginException; swallow so a fire-and-forget call
+          // never surfaces an unhandled async error. Native logs real warm failures.
+          .catchError((Object _) {});
+}

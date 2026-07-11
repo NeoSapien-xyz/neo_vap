@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:neo_vap/neo_vap.dart';
 
-void main() => runApp(const MyApp());
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Warm the native GL pipeline before the first screen so the first animation
+  // isn't stalled by cold EGL init + shader compile (U5).
+  NeoVap.prewarm();
+  runApp(const MyApp());
+}
 
 /// U4 device harness: plays the VAP clips into a NeoVapView over a colored
 /// checkerboard so transparency is obvious. Swap the asset with the buttons.

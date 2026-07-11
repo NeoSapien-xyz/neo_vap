@@ -5,7 +5,7 @@
 /// PlatformView, so no CENTER_CROP / zero-bounds / dispose-race bugs.
 library;
 
-export 'src/neo_vap_controller.dart' show NeoVapController, NeoVapState;
+export 'src/neo_vap_controller.dart' show NeoVap, NeoVapController, NeoVapState;
 export 'src/neo_vap_view.dart' show NeoVapView;
 export 'src/vapc.dart' show VapcInfo, VapcRect, VapcParseException;
 
