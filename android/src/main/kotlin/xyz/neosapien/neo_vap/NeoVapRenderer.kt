@@ -313,14 +313,15 @@ class NeoVapRenderer(
             varying vec2 vTex;
 
             vec2 sampleUV(vec4 rect) {
-                vec2 px = rect.xy + vTex * rect.zw;
+                vec2 px = rect.xy + vTex * rect.zw; // image px (y-down from top)
                 vec2 norm = px / uVideoSize;
+                norm.y = 1.0 - norm.y;              // image y-down -> GL texcoord y-up
                 return (uSTMatrix * vec4(norm, 0.0, 1.0)).xy;
             }
             void main() {
                 vec3 color = texture2D(uTex, sampleUV(uRgbRect)).rgb;
                 float alpha = texture2D(uTex, sampleUV(uAlphaRect)).r;
-                gl_FragColor = vec4(color * alpha, alpha);
+                gl_FragColor = vec4(color * alpha, alpha); // premultiplied
             }
         """
     }
