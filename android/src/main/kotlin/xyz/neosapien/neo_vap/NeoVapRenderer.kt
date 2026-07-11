@@ -15,6 +15,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * Composites a side-by-side VAP frame into a transparent [Surface].
@@ -85,7 +86,16 @@ class NeoVapRenderer(
                 latch.countDown()
             }
         }
-        latch.await()
+        // Bound the wait: initGl() posts to the render thread, so a wedged native
+        // EGL/GL call (some drivers hang) would block the caller — the MAIN thread
+        // on a real play — forever, an ANR. On timeout, throw so the caller's
+        // catch runs (play fails recoverably, placeholder stays) instead. 3s is
+        // well under Android's 5s ANR threshold yet generous for slow first-init.
+        // Caveat: this bounds the caller's wait only — a truly wedged render
+        // HandlerThread can't be force-killed from Kotlin and stays leaked.
+        if (!latch.await(GL_INIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+            throw RuntimeException("neo_vap GL init timed out after ${GL_INIT_TIMEOUT_SECONDS}s")
+        }
         error?.let { throw RuntimeException("neo_vap GL init failed: ${it.message}", it) }
         return inputSurface
     }
@@ -289,6 +299,10 @@ class NeoVapRenderer(
     }
 
     companion object {
+        // Ceiling on the GL-init wait — see awaitInputSurface(). Under the 5s ANR
+        // threshold; a slower low-end init still fits (A015 warms in ~276ms).
+        private const val GL_INIT_TIMEOUT_SECONDS = 3L
+
         private const val VERTEX_SHADER = """
             attribute vec2 aPos;
             attribute vec2 aTex;
