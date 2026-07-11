@@ -15,10 +15,8 @@ enum NeoVapState {
   /// Texture allocated, not yet playing.
   ready,
 
-  /// The one-shot intro clip is playing.
-  playingIntro,
-
-  /// The loop is playing (infinite unless a finite repeat was requested).
+  /// Playing — the intro→loop sequence (chained gaplessly by the native player)
+  /// or a standalone clip. Infinite unless a finite repeat was requested.
   playingLoop,
 
   /// A finite play completed. Only reachable when the loop is not infinite;
@@ -116,11 +114,16 @@ class NeoVapController extends ChangeNotifier {
     if (_textureId == null || _state == NeoVapState.disposed) return;
     try {
       if (_hasIntro && !_introPlayed) {
-        _setState(NeoVapState.playingIntro);
-        // Preroll the loop while the intro plays so the handoff is seamless.
-        // A preroll failure is non-fatal — the loop still starts on its own.
-        unawaited(_backend.prepare(_textureId!, videoAsset).catchError((_) {}));
-        await _backend.play(_textureId!, introAsset!, repeat: kNeoVapPlayOnce);
+        _introPlayed = true;
+        _setState(NeoVapState.playingLoop);
+        // Native plays the intro once then loops the clip forever, gaplessly —
+        // no 'ended' round-trip, so a dropped event can't strand the loop.
+        await _backend.play(
+          _textureId!,
+          introAsset!,
+          repeat: kNeoVapPlayOnce,
+          nextAsset: videoAsset,
+        );
       } else {
         await _playLoop();
       }
@@ -151,15 +154,13 @@ class NeoVapController extends ChangeNotifier {
         notifyListeners();
         onFirstFrame?.call();
       case NeoVapEventType.ended:
-        if (_state == NeoVapState.playingIntro) {
-          // Chain intro → loop; surface a start failure instead of dropping it.
-          _playLoop().catchError((Object e) => _fail('play failed: $e'));
-        } else if (_state == NeoVapState.playingLoop) {
+        // The intro→loop sequence never ends natively, so 'ended' means a
+        // genuinely finite play finished. Only act while actively looping — a
+        // stale 'ended' after stop() must not resurrect playback or misfire.
+        if (_state == NeoVapState.playingLoop) {
           _setState(NeoVapState.ended);
           onEnd?.call();
         }
-        // A stale 'ended' while not actively playing (e.g. after stop()) is
-        // ignored — it must not resurrect playback or misfire onEnd.
       case NeoVapEventType.error:
         _fail(event.message ?? 'unknown playback error');
     }

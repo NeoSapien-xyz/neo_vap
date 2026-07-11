@@ -51,13 +51,15 @@ class NeoVapPlugin :
                     result.success(id)
                 }
                 "play" -> {
-                    player(call)?.play(call.arg("asset"), call.argument<Int>("repeat") ?: -1)
+                    player(call)?.play(
+                        call.arg("asset"),
+                        call.argument<Int>("repeat") ?: -1,
+                        call.argument<String>("nextAsset"),
+                    )
                     result.success(null)
                 }
-                "prepare" -> {
-                    player(call)?.prepare(call.arg("asset"))
-                    result.success(null)
-                }
+                // Preroll is handled natively by the intro→loop playlist; no-op.
+                "prepare" -> result.success(null)
                 "stop" -> {
                     player(call)?.stop()
                     result.success(null)

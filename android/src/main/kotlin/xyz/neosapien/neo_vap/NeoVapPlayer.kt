@@ -53,10 +53,16 @@ class NeoVapPlayer(
             setVideoSurface(inputSurface)
             addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(state: Int) {
-                    if (state == Player.STATE_ENDED) {
-                        android.util.Log.d("NeoVapDbg", "STATE_ENDED tex=$textureId")
-                        emit("ended", null)
-                    }
+                    // Only reached for a genuinely finite play; the intro→loop
+                    // sequence never ends (the loop item is REPEAT_MODE_ONE).
+                    if (state == Player.STATE_ENDED) emit("ended", null)
+                }
+
+                override fun onMediaItemTransition(item: MediaItem?, reason: Int) {
+                    // Auto-advanced from the intro (index 0) to the loop (index
+                    // 1): loop that item forever. Gapless — ExoPlayer buffered it
+                    // while the intro played.
+                    if (currentMediaItemIndex == 1) repeatMode = Player.REPEAT_MODE_ONE
                 }
 
                 override fun onPlayerError(error: PlaybackException) {
@@ -66,20 +72,30 @@ class NeoVapPlayer(
         }
     }
 
-    /** Play [assetPath]; [repeat] == -1 loops forever, else plays once. */
-    fun play(assetPath: String, repeat: Int) {
+    /**
+     * Play [assetPath]. With [nextAsset], play [assetPath] once then loop
+     * [nextAsset] forever, chained gaplessly by the playlist (the intro→loop
+     * case). Otherwise [repeat] == -1 loops [assetPath] forever, else once.
+     */
+    fun play(assetPath: String, repeat: Int, nextAsset: String?) {
         ensureInitialized(assetPath)
         val p = player ?: return
-        p.repeatMode = if (repeat == LOOP_FOREVER) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
-        p.setMediaItem(MediaItem.fromUri(assetUri(assetPath)))
+        if (nextAsset != null) {
+            p.repeatMode = Player.REPEAT_MODE_OFF // intro once; loop set on transition
+            p.setMediaItems(
+                listOf(
+                    MediaItem.fromUri(assetUri(assetPath)),
+                    MediaItem.fromUri(assetUri(nextAsset)),
+                ),
+            )
+        } else {
+            p.repeatMode =
+                if (repeat == LOOP_FOREVER) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+            p.setMediaItem(MediaItem.fromUri(assetUri(assetPath)))
+        }
         p.prepare()
         p.playWhenReady = true
     }
-
-    // ponytail: real cross-clip preroll is U5 (cold-start prewarm). One ExoPlayer
-    // per texture can't buffer a second item mid-play without a playlist, and the
-    // intro->loop handoff is correct without it, so prepare is a no-op for now.
-    fun prepare(assetPath: String) {}
 
     fun stop() {
         player?.run {

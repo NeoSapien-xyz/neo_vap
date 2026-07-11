@@ -50,11 +50,16 @@ abstract class NeoVapBackend {
   /// Play [asset] on [textureId]. [repeat] uses [kNeoVapLoopForever] /
   /// [kNeoVapPlayOnce] (or any positive count). [keepLastFrame] holds the final
   /// frame after a finite play instead of clearing to transparent.
+  ///
+  /// When [nextAsset] is given, [asset] plays once and then [nextAsset] loops
+  /// forever — chained gaplessly by the native player (no event round-trip),
+  /// which is how the intro→loop sequence stays seamless and race-proof.
   Future<void> play(
     int textureId,
     String asset, {
     int repeat = kNeoVapLoopForever,
     bool keepLastFrame = true,
+    String? nextAsset,
   });
 
   /// Stop playback on [textureId] (texture stays allocated).
@@ -104,12 +109,14 @@ class MethodChannelNeoVap implements NeoVapBackend {
     String asset, {
     int repeat = kNeoVapLoopForever,
     bool keepLastFrame = true,
+    String? nextAsset,
   }) =>
       _method.invokeMethod<void>('play', {
         'textureId': textureId,
         'asset': asset,
         'repeat': repeat,
         'keepLastFrame': keepLastFrame,
+        'nextAsset': nextAsset,
       });
 
   @override

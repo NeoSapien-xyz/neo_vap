@@ -32,8 +32,11 @@ class FakeBackend implements NeoVapBackend {
     String asset, {
     int repeat = kNeoVapLoopForever,
     bool keepLastFrame = true,
+    String? nextAsset,
   }) async =>
-      calls.add('play:$asset:repeat=$repeat');
+      calls.add(
+        'play:$asset:repeat=$repeat${nextAsset != null ? ':next=$nextAsset' : ''}',
+      );
 
   @override
   Future<void> stop(int textureId) async => calls.add('stop');
@@ -75,40 +78,30 @@ void main() {
     expect(backend.calls, contains('allocate'));
   });
 
-  test('intro plays once, then chains to the infinite loop', () async {
+  test('intro→loop is one gapless native call (no ended round-trip)', () async {
     final c = make(intro: 'intro.mp4');
     await c.initialize();
     await c.play();
 
-    expect(c.state, NeoVapState.playingIntro);
+    // Native chains intro (once) -> loop (forever); no separate loop call, no
+    // dependence on an 'ended' event to start the loop.
+    expect(c.state, NeoVapState.playingLoop);
     expect(
       backend.calls,
-      containsAllInOrder([
-        'allocate',
-        'prepare:loop.mp4', // loop prerolled while intro plays (KTD-6)
-        'play:intro.mp4:repeat=1',
-      ]),
+      containsAllInOrder(['allocate', 'play:intro.mp4:repeat=1:next=loop.mp4']),
     );
-
-    backend.emit(const NeoVapEvent(42, NeoVapEventType.ended));
-    await pumpEventQueue();
-
-    expect(c.state, NeoVapState.playingLoop);
-    expect(backend.calls.last, 'play:loop.mp4:repeat=-1');
   });
 
   test('re-entry skips the intro and plays the loop directly', () async {
     final c = make(intro: 'intro.mp4');
     await c.initialize();
-    await c.play();
-    backend.emit(const NeoVapEvent(42, NeoVapEventType.ended));
-    await pumpEventQueue();
+    await c.play(); // intro -> loop (intro consumed)
 
     backend.calls.clear();
     await c.play(); // second call == re-entry
 
     expect(backend.calls, ['play:loop.mp4:repeat=-1']);
-    expect(backend.calls, isNot(contains('play:intro.mp4:repeat=1')));
+    expect(backend.calls.every((c) => !c.startsWith('play:intro')), isTrue);
   });
 
   test('with no intro, plays the loop directly', () async {
