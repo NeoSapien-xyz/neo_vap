@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neo_vap/neo_vap.dart';
+import 'package:neo_vap/src/neo_vap_method_channel.dart';
 
 import 'neo_vap_controller_test.dart' show FakeBackend;
 

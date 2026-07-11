@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart';
 
 /// Single loop sentinel (KTD-7): `repeat: kNeoVapLoopForever` plays the clip
@@ -38,6 +39,8 @@ abstract class NeoVapBackend {
 
   /// Warm the decoder + shader pipeline (KTD-6). Optionally decodes one frame
   /// of [warmupAsset] to force pipeline-state compilation at app init.
+  // ponytail: part of the native contract; wired to an app-init call in U5
+  // (cold-start prewarm). Defined here so the channel protocol is complete.
   Future<void> prewarm({String? warmupAsset});
 
   /// Preroll/prepare [asset] on [textureId] without displaying it, so the next
@@ -119,9 +122,11 @@ class MethodChannelNeoVap implements NeoVapBackend {
 
   @override
   Stream<NeoVapEvent> get events =>
-      _events ??= _eventChannel.receiveBroadcastStream().map(_decodeEvent);
+      _events ??= _eventChannel.receiveBroadcastStream().map(decodeEvent);
 
-  static NeoVapEvent _decodeEvent(dynamic raw) {
+  /// Maps a raw platform event map to a [NeoVapEvent]. Public only for tests.
+  @visibleForTesting
+  static NeoVapEvent decodeEvent(dynamic raw) {
     final map = (raw as Map).cast<String, dynamic>();
     final textureId = (map['textureId'] as num).toInt();
     switch (map['event'] as String?) {

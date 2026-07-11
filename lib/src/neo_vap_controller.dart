@@ -6,13 +6,29 @@ import 'neo_vap_method_channel.dart';
 
 /// Playback lifecycle states.
 enum NeoVapState {
+  /// Constructed, no texture allocated yet.
   idle,
+
+  /// [NeoVapController.initialize] is allocating the texture.
   initializing,
+
+  /// Texture allocated, not yet playing.
   ready,
+
+  /// The one-shot intro clip is playing.
   playingIntro,
+
+  /// The loop is playing (infinite unless a finite repeat was requested).
   playingLoop,
+
+  /// A finite play completed. Only reachable when the loop is not infinite;
+  /// an intro→infinite-loop sequence never reaches this state.
   ended,
+
+  /// A native playback/allocation error occurred; the placeholder is re-shown.
   error,
+
+  /// Disposed; the texture is released and no further state changes occur.
   disposed,
 }
 
@@ -27,7 +43,7 @@ class NeoVapController extends ChangeNotifier {
   NeoVapController({
     required this.videoAsset,
     this.introAsset,
-    NeoVapBackend? backend,
+    @visibleForTesting NeoVapBackend? backend,
     this.onEnd,
     this.onError,
     this.onFirstFrame,
@@ -73,7 +89,9 @@ class NeoVapController extends ChangeNotifier {
     _setState(NeoVapState.initializing);
     _sub = _backend.events.listen(_onEvent);
     try {
-      _textureId = await _backend.allocateTexture();
+      final id = await _backend.allocateTexture();
+      if (_state == NeoVapState.disposed) return; // disposed mid-allocation
+      _textureId = id;
       _setState(NeoVapState.ready);
     } catch (e) {
       _fail('initialize failed: $e');
@@ -84,13 +102,18 @@ class NeoVapController extends ChangeNotifier {
   /// loop; on any later call the intro is skipped and the loop plays directly.
   Future<void> play() async {
     if (_textureId == null || _state == NeoVapState.disposed) return;
-    if (_hasIntro && !_introPlayed) {
-      _setState(NeoVapState.playingIntro);
-      // Preroll the loop while the intro plays so the handoff is seamless.
-      unawaited(_backend.prepare(_textureId!, videoAsset));
-      await _backend.play(_textureId!, introAsset!, repeat: kNeoVapPlayOnce);
-    } else {
-      await _playLoop();
+    try {
+      if (_hasIntro && !_introPlayed) {
+        _setState(NeoVapState.playingIntro);
+        // Preroll the loop while the intro plays so the handoff is seamless.
+        // A preroll failure is non-fatal — the loop still starts on its own.
+        unawaited(_backend.prepare(_textureId!, videoAsset).catchError((_) {}));
+        await _backend.play(_textureId!, introAsset!, repeat: kNeoVapPlayOnce);
+      } else {
+        await _playLoop();
+      }
+    } catch (e) {
+      _fail('play failed: $e');
     }
   }
 
@@ -117,23 +140,28 @@ class NeoVapController extends ChangeNotifier {
         onFirstFrame?.call();
       case NeoVapEventType.ended:
         if (_state == NeoVapState.playingIntro) {
-          _playLoop(); // chain intro → loop
-        } else {
+          // Chain intro → loop; surface a start failure instead of dropping it.
+          _playLoop().catchError((Object e) => _fail('play failed: $e'));
+        } else if (_state == NeoVapState.playingLoop) {
           _setState(NeoVapState.ended);
           onEnd?.call();
         }
+        // A stale 'ended' while not actively playing (e.g. after stop()) is
+        // ignored — it must not resurrect playback or misfire onEnd.
       case NeoVapEventType.error:
         _fail(event.message ?? 'unknown playback error');
     }
   }
 
   void _fail(String message) {
+    if (_state == NeoVapState.disposed) return;
     _showPlaceholder = true;
     _setState(NeoVapState.error);
     onError?.call(message);
   }
 
   void _setState(NeoVapState next) {
+    if (_state == NeoVapState.disposed) return; // never notify after dispose
     _state = next;
     notifyListeners();
   }

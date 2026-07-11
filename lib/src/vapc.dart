@@ -104,13 +104,13 @@ class VapcInfo {
   /// Walks top-level mp4 boxes looking for the `vapc` box (a JSON payload).
   /// Throws [VapcParseException] if the box is missing or malformed.
   static VapcInfo parse(Uint8List bytes) {
-    final json = _extractVapcJson(bytes);
-    final dynamic decoded = jsonDecode(json);
-    if (decoded is! Map || decoded['info'] is! Map) {
-      throw const VapcParseException('vapc atom missing "info" object');
-    }
-    final info = decoded['info'] as Map;
     try {
+      final json = _extractVapcJson(bytes);
+      final dynamic decoded = jsonDecode(json);
+      if (decoded is! Map || decoded['info'] is! Map) {
+        throw const VapcParseException('vapc atom missing "info" object');
+      }
+      final info = decoded['info'] as Map;
       return VapcInfo(
         version: (info['v'] as num).toInt(),
         frameCount: (info['f'] as num).toInt(),
@@ -127,7 +127,9 @@ class VapcInfo {
     } on VapcParseException {
       rethrow;
     } catch (e) {
-      throw VapcParseException('malformed vapc info: $e');
+      // Wrap FormatException (bad UTF-8 / non-JSON) and field type errors so
+      // callers only ever have to catch VapcParseException.
+      throw VapcParseException('malformed vapc atom: $e');
     }
   }
 

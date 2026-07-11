@@ -6,13 +6,9 @@
 library;
 
 export 'src/neo_vap_controller.dart' show NeoVapController, NeoVapState;
-export 'src/neo_vap_method_channel.dart'
-    show
-        NeoVapBackend,
-        MethodChannelNeoVap,
-        NeoVapEvent,
-        NeoVapEventType,
-        kNeoVapLoopForever,
-        kNeoVapPlayOnce;
 export 'src/neo_vap_view.dart' show NeoVapView;
 export 'src/vapc.dart' show VapcInfo, VapcRect, VapcParseException;
+
+// The backend seam (NeoVapBackend / MethodChannelNeoVap / NeoVapEvent / loop
+// sentinels) is deliberately NOT exported — it is an internal contract for the
+// native backends and tests, not public API. Tests import 'src/...' directly.

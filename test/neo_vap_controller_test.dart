@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neo_vap/neo_vap.dart';
+import 'package:neo_vap/src/neo_vap_method_channel.dart';
 
 /// Records backend calls and lets tests inject native events.
 class FakeBackend implements NeoVapBackend {
@@ -9,10 +10,12 @@ class FakeBackend implements NeoVapBackend {
   final StreamController<NeoVapEvent> _events =
       StreamController<NeoVapEvent>.broadcast();
   int allocatedId = 42;
+  bool failAllocate = false;
 
   @override
   Future<int> allocateTexture() async {
     calls.add('allocate');
+    if (failAllocate) throw Exception('allocate boom');
     return allocatedId;
   }
 
@@ -51,12 +54,17 @@ void main() {
   setUp(() => backend = FakeBackend());
   tearDown(() => backend.close());
 
-  NeoVapController make({String? intro, void Function(String)? onError}) =>
+  NeoVapController make({
+    String? intro,
+    void Function(String)? onError,
+    void Function()? onEnd,
+  }) =>
       NeoVapController(
         videoAsset: 'loop.mp4',
         introAsset: intro,
         backend: backend,
         onError: onError,
+        onEnd: onEnd,
       );
 
   test('initialize allocates a texture and becomes ready', () async {
@@ -142,5 +150,47 @@ void main() {
     c.dispose();
     expect(c.state, NeoVapState.disposed);
     expect(backend.calls, contains('dispose'));
+  });
+
+  test('dispose while initialize is in flight does not throw', () async {
+    final c = make();
+    final pending = c.initialize(); // allocateTexture awaiting
+    c.dispose(); // disposed before it resolves
+    await pending; // must not throw "used after being disposed"
+    expect(c.state, NeoVapState.disposed);
+  });
+
+  test('initialize failure sets error state and fires onError', () async {
+    backend.failAllocate = true;
+    String? err;
+    final c = make(onError: (m) => err = m);
+    await c.initialize();
+    expect(c.state, NeoVapState.error);
+    expect(err, isNotNull);
+  });
+
+  test('onEnd fires when a finite loop ends', () async {
+    var ended = false;
+    final c = make(onEnd: () => ended = true);
+    await c.initialize();
+    await c.play(); // playingLoop
+    backend.emit(const NeoVapEvent(42, NeoVapEventType.ended));
+    await pumpEventQueue();
+    expect(ended, isTrue);
+    expect(c.state, NeoVapState.ended);
+  });
+
+  test('stop() ignores a later stale ended event', () async {
+    var ended = false;
+    final c = make(onEnd: () => ended = true);
+    await c.initialize();
+    await c.play();
+    await c.stop();
+    expect(c.state, NeoVapState.ready);
+
+    backend.emit(const NeoVapEvent(42, NeoVapEventType.ended));
+    await pumpEventQueue();
+    expect(ended, isFalse); // must not resurrect playback or misfire onEnd
+    expect(c.state, NeoVapState.ready);
   });
 }
