@@ -155,7 +155,10 @@ class NeoVapController extends ChangeNotifier {
     switch (event.type) {
       case NeoVapEventType.info:
         final w = event.width, h = event.height;
-        if (w != null && h != null && h > 0) {
+        // Guard both dims: a numeric-but-nonsensical payload ("0x846", negatives)
+        // passes int.tryParse; a 0/negative aspect would collapse the view, so
+        // ignore it and leave the caller-supplied aspect in force.
+        if (w != null && h != null && w > 0 && h > 0) {
           _contentAspect = w / h;
           notifyListeners();
         }

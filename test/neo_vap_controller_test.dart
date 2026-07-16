@@ -166,6 +166,19 @@ void main() {
     expect(c.contentAspect, closeTo(1504 / 846, 1e-9));
   });
 
+  test('info with a non-positive dimension is ignored', () async {
+    final c = make();
+    await c.initialize();
+    // "0x846"/negatives pass int.tryParse but must not set a 0/negative aspect
+    // that would collapse the view — the caller-supplied aspect stays in force.
+    backend.emit(
+        const NeoVapEvent(42, NeoVapEventType.info, width: 0, height: 846));
+    backend.emit(
+        const NeoVapEvent(42, NeoVapEventType.info, width: -5, height: 846));
+    await pumpEventQueue();
+    expect(c.contentAspect, isNull);
+  });
+
   test('ignores events for other textures', () async {
     final c = make();
     await c.initialize();
