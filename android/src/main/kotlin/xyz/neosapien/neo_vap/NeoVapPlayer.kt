@@ -37,6 +37,9 @@ class NeoVapPlayer(
         val info = VapcInfo.parse(context.assets.open(key).use { it.readBytes() })
 
         producer.setSize(info.width, info.height)
+        // Report the real content size so Dart can size the view off the clip's
+        // aspect instead of a hardcoded value. Emitted once, before any frame.
+        emit("info", "${info.width}x${info.height}")
         val r = NeoVapRenderer(info) { emit("firstFrame", null) }
         val inputSurface = r.awaitInputSurface()
         renderer = r

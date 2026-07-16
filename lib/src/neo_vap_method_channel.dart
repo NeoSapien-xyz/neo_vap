@@ -10,17 +10,28 @@ const int kNeoVapLoopForever = -1;
 const int kNeoVapPlayOnce = 1;
 
 /// Kinds of native → Dart playback events.
-enum NeoVapEventType { firstFrame, ended, error }
+enum NeoVapEventType { firstFrame, ended, error, info }
 
 /// A playback event for a specific texture, delivered from the native backend.
 class NeoVapEvent {
-  const NeoVapEvent(this.textureId, this.type, {this.message});
+  const NeoVapEvent(
+    this.textureId,
+    this.type, {
+    this.message,
+    this.width,
+    this.height,
+  });
 
   final int textureId;
   final NeoVapEventType type;
 
   /// Error detail; only set when [type] is [NeoVapEventType.error].
   final String? message;
+
+  /// Content pixel size reported once at init; only set for
+  /// [NeoVapEventType.info]. `width / height` is the clip's content aspect.
+  final int? width;
+  final int? height;
 
   @override
   String toString() =>
@@ -126,6 +137,17 @@ class MethodChannelNeoVap implements NeoVapBackend {
         return NeoVapEvent(textureId, NeoVapEventType.firstFrame);
       case 'ended':
         return NeoVapEvent(textureId, NeoVapEventType.ended);
+      case 'info':
+        // Content size arrives as "WxH" in the message slot (keeps the native
+        // emit signature message-only). Malformed → nulls, which the controller
+        // ignores, so a bad payload just leaves the caller-supplied aspect.
+        final parts = (map['message'] as String?)?.split('x') ?? const [];
+        return NeoVapEvent(
+          textureId,
+          NeoVapEventType.info,
+          width: parts.length == 2 ? int.tryParse(parts[0]) : null,
+          height: parts.length == 2 ? int.tryParse(parts[1]) : null,
+        );
       case 'error':
         return NeoVapEvent(
           textureId,

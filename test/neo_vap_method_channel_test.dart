@@ -29,6 +29,22 @@ void main() {
       expect(e.type, NeoVapEventType.error);
       expect(e.message, contains('wat'));
     });
+
+    test('info decodes the "WxH" content size', () {
+      final e = MethodChannelNeoVap.decodeEvent(
+          {'textureId': 3, 'event': 'info', 'message': '1504x846'});
+      expect(e.type, NeoVapEventType.info);
+      expect(e.width, 1504);
+      expect(e.height, 846);
+    });
+
+    test('malformed info size decodes to null dimensions', () {
+      final e = MethodChannelNeoVap.decodeEvent(
+          {'textureId': 3, 'event': 'info', 'message': 'garbage'});
+      expect(e.type, NeoVapEventType.info);
+      expect(e.width, isNull);
+      expect(e.height, isNull);
+    });
   });
 
   group('method invocations', () {

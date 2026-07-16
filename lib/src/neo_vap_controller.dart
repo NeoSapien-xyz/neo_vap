@@ -79,12 +79,18 @@ class NeoVapController extends ChangeNotifier {
   NeoVapState _state = NeoVapState.idle;
   bool _introPlayed = false;
   bool _showPlaceholder = true;
+  double? _contentAspect;
   StreamSubscription<NeoVapEvent>? _sub;
 
   /// Registered texture id, or null before [initialize].
   int? get textureId => _textureId;
 
   NeoVapState get state => _state;
+
+  /// The clip's real content aspect (width / height), reported by native on the
+  /// first play, or null until then. [NeoVapView] uses this so callers no longer
+  /// have to hardcode an aspect.
+  double? get contentAspect => _contentAspect;
 
   /// Whether the placeholder should be visible (true until first frame).
   bool get showPlaceholder => _showPlaceholder;
@@ -147,6 +153,12 @@ class NeoVapController extends ChangeNotifier {
   void _onEvent(NeoVapEvent event) {
     if (event.textureId != _textureId || _state == NeoVapState.disposed) return;
     switch (event.type) {
+      case NeoVapEventType.info:
+        final w = event.width, h = event.height;
+        if (w != null && h != null && h > 0) {
+          _contentAspect = w / h;
+          notifyListeners();
+        }
       case NeoVapEventType.firstFrame:
         _showPlaceholder = false;
         notifyListeners();

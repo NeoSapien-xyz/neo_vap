@@ -44,10 +44,11 @@ class NeoVapView extends StatefulWidget {
 
   final BoxFit fit;
 
-  /// Content aspect ratio (width / height). When known, [fit] is applied
-  /// against it; otherwise the texture fills the box.
-  // ponytail: caller-supplied for now; the native backend will report the
-  // real vapc aspect on init so this becomes optional-then-authoritative.
+  /// Overrides the content aspect ratio (width / height). Normally null — the
+  /// native backend reports the real `vapc` aspect on init and the view sizes
+  /// against that. Set this only to force a different aspect (e.g. crop past
+  /// transparent margins with [BoxFit.cover]); an explicit value wins over the
+  /// reported one.
   final double? aspectRatio;
 
   /// Optional externally-owned controller. When null, the view creates and owns
@@ -128,7 +129,8 @@ class _NeoVapViewState extends State<NeoVapView> {
 
   Widget _buildTexture(int textureId) {
     final texture = Texture(textureId: textureId);
-    final ar = widget.aspectRatio;
+    // Explicit override wins; otherwise use the aspect native reported on init.
+    final ar = widget.aspectRatio ?? _controller.contentAspect;
     if (ar == null) return texture;
     return FittedBox(
       fit: widget.fit,

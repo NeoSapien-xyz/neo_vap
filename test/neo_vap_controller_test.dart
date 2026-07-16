@@ -124,6 +124,17 @@ void main() {
     expect(captured, 'boom');
   });
 
+  test('info event exposes the content aspect', () async {
+    final c = make();
+    await c.initialize();
+    expect(c.contentAspect, isNull);
+
+    backend.emit(const NeoVapEvent(42, NeoVapEventType.info,
+        width: 1504, height: 846));
+    await pumpEventQueue();
+    expect(c.contentAspect, closeTo(1504 / 846, 1e-9));
+  });
+
   test('ignores events for other textures', () async {
     final c = make();
     await c.initialize();
