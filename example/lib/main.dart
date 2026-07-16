@@ -19,16 +19,25 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
-  static const _clips = <String, ({String video, String? intro, double aspect})>{
+  static const _clips =
+      <String, ({String video, String? intro, double? aspect, BoxFit fit})>{
     'active (square)': (
       video: 'assets/active_mode_loop_vap.mp4',
       intro: 'assets/active_mode_intro_vap.mp4',
       aspect: 1.0,
+      fit: BoxFit.contain,
     ),
-    'gunmetal (16:9)': (
+    'gunmetal old (bars)': (
       video: 'assets/gunmetal_pendant_vap_lowres.mp4',
       intro: null,
-      aspect: 1504 / 846,
+      aspect: 1504 / 846, // bar'd 16:9 content, cover to zoom past the margins
+      fit: BoxFit.cover,
+    ),
+    'gunmetal cropped': (
+      video: 'assets/gunmetal_pendant_vap.mp4',
+      intro: null,
+      aspect: null, // native reports the real ~0.599 pendant aspect
+      fit: BoxFit.contain,
     ),
   };
 
@@ -53,17 +62,19 @@ class _MyAppState extends State<MyApp> {
                   ),
                 ),
                 child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
+                  // NeoVapView fills its parent, so the BOX size — not the asset —
+                  // sets how big the pendant is. This is the Figma "Neo 2" box
+                  // (236.55×377.87), centered. Without a bounded box the view
+                  // expands to fill the whole screen ("zoomed to eternity").
+                  child: SizedBox(
+                    width: 236.55,
+                    height: 377.87,
                     child: NeoVapView(
                       // Key forces recreation when the clip changes.
                       key: ValueKey(_selected),
                       videoAsset: clip.video,
                       introAsset: clip.intro,
-                      // cover for gunmetal to zoom past its big transparent margins
-                      fit: _selected.startsWith('gunmetal')
-                          ? BoxFit.cover
-                          : BoxFit.contain,
+                      fit: clip.fit,
                       aspectRatio: clip.aspect,
                       onError: (m) => debugPrint('neo_vap error: $m'),
                     ),

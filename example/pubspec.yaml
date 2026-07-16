@@ -57,6 +57,7 @@ flutter:
     - assets/active_mode_intro_vap.mp4
     - assets/active_mode_loop_vap.mp4
     - assets/gunmetal_pendant_vap_lowres.mp4
+    - assets/gunmetal_pendant_vap.mp4
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
