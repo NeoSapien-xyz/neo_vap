@@ -1,6 +1,7 @@
 ---
 title: "Texture-plugin cold-start prewarm: warm off-main, and three fire-and-forget hardening rules"
 date: 2026-07-12
+last_refreshed: 2026-07-16
 category: architecture-patterns
 module: neo_vap
 problem_type: architecture_pattern
@@ -36,8 +37,9 @@ The warm itself is easy. The trap is that it is a *best-effort, fire-and-forget,
 cross-platform, background-threaded* call — and each of those four adjectives
 hides a way to turn a latency optimization into a crash, a log-spam, or an ANR.
 A code review of the Android prewarm surfaced three distinct gotchas; all three
-generalize to any platform's prewarm (the iOS Metal version is still to come) and
-to any plugin that warms a native pipeline at startup.
+generalize to any platform's prewarm — the iOS Metal prewarm has since landed and
+carried all three over unchanged — and to any plugin that warms a native pipeline
+at startup.
 
 ## Guidance
 
@@ -94,8 +96,8 @@ try {
 ### Rule 2 — The Dart facade must swallow the Future
 
 A fire-and-forget `NeoVap.prewarm()` returns a `Future` nobody awaits. On any
-platform whose native handler is **not yet implemented** (here: iOS, deferred),
-the method channel rejects with `MissingPluginException` — an **unhandled async
+platform whose native handler is **not yet implemented** (as iOS was before its
+Metal backend landed), the method channel rejects with `MissingPluginException` — an **unhandled async
 error logged every single launch**. A call documented "safe to call, best-effort"
 must actually be safe: swallow the rejection at the facade so no call site can
 surface it. The native side still logs real warm failures, so visibility is not
@@ -105,8 +107,9 @@ lost.
 static Future<void> prewarm({String? warmupAsset}) =>
     _sharedBackend
         .prewarm(warmupAsset: warmupAsset)
-        // Platform with no native prewarm (iOS until its backend lands) rejects
-        // with MissingPluginException; swallow so fire-and-forget stays safe.
+        // A platform with no native prewarm handler rejects with
+        // MissingPluginException; swallow so this fire-and-forget call never
+        // surfaces an unhandled async error. Native logs real warm failures.
         .catchError((Object _) {});
 ```
 
@@ -138,8 +141,8 @@ Each rule turns a specific silent failure into a survivable one:
   crashes on launch on some device." The warm exists to *improve* startup; an
   unguarded warm that can crash startup is strictly worse than no warm.
 - **Rule 2** is invisible in single-platform testing and on the platform that
-  *does* implement the handler — it only bites the deferred platform, every
-  launch, as log noise that masks real errors. Because it is a cross-platform
+  *does* implement the handler — it only bites an as-yet-unimplemented platform,
+  every launch, as log noise that masks real errors. Because it is a cross-platform
   facade over a partially-implemented native contract, the safe default (swallow)
   must be baked in before the second platform exists, not after someone notices
   the spam.
@@ -160,8 +163,8 @@ make the degraded outcome explicit.
   platforms implement it** — the facade needs the `.catchError` from day one.
 - Any place a Dart or native caller blocks on a latch/future waiting for
   render-thread or GPU init that can fail or hang — bound the wait.
-- Directly relevant to the **still-to-come iOS Metal prewarm** for this plugin:
-  apply all three rules up front rather than re-discovering them per platform.
+- Confirmed platform-general by this plugin's **iOS Metal prewarm**: the same
+  three rules carried straight over rather than needing rediscovery per platform.
 
 ## Examples
 
@@ -177,6 +180,13 @@ The three fixes landed on `neo_vap`'s Android prewarm:
 
 Device-verified on Android 15 (device A015): warm logged `GL pipeline warmed in
 276ms` at init, both clips still render, no crash, no regression.
+
+The same three rules carried over to the **iOS Metal prewarm** (`NeoVapPlugin.swift`):
+the warm dispatches off-main via `DispatchQueue.global(qos: .utility)`, all
+construction lives inside `MetalCompositor.init?` (which returns nil instead of
+throwing, satisfying Rule 1), and because the iOS warm dispatches async with no
+main-thread latch, Rule 3 is satisfied by construction — there is nothing to bound.
+Device-verified on a physical iPhone (iOS 26.5).
 
 ## Related
 
