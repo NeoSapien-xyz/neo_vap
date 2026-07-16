@@ -124,6 +124,37 @@ void main() {
     expect(captured, 'boom');
   });
 
+  test('ended keeps the placeholder hidden (freezes on the last frame)',
+      () async {
+    // A finite clip ending is neither an error nor a reset, so the last
+    // rendered frame stays on screen — the placeholder must NOT re-show (that
+    // is reserved for stop() and error).
+    final c = make();
+    await c.initialize();
+    await c.play(); // playingLoop
+    backend.emit(const NeoVapEvent(42, NeoVapEventType.firstFrame));
+    await pumpEventQueue();
+    expect(c.showPlaceholder, isFalse);
+
+    backend.emit(const NeoVapEvent(42, NeoVapEventType.ended));
+    await pumpEventQueue();
+    expect(c.state, NeoVapState.ended);
+    expect(c.showPlaceholder, isFalse); // frozen on last frame, not reset
+  });
+
+  test('placeholder never hides without a firstFrame event (no timer)',
+      () async {
+    // The placeholder is event-driven: only a real firstFrame hides it. Time
+    // passing alone must not — guards against a regression to a timed reveal.
+    final c = make();
+    await c.initialize();
+    await c.play();
+    expect(c.showPlaceholder, isTrue);
+    await pumpEventQueue();
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    expect(c.showPlaceholder, isTrue);
+  });
+
   test('info event exposes the content aspect', () async {
     final c = make();
     await c.initialize();
@@ -149,6 +180,20 @@ void main() {
     c.dispose();
     expect(c.state, NeoVapState.disposed);
     expect(backend.calls, contains('dispose'));
+  });
+
+  test('dispose never routes through stop() (NEO-1731 regression guard)',
+      () async {
+    // The flutter_vap_plus bug was a per-view stop() inside dispose(), which
+    // raised MissingPluginException during teardown. neo_vap must release the
+    // texture directly; this fails if stop()-in-dispose is ever reintroduced.
+    final c = make(intro: 'intro.mp4');
+    await c.initialize();
+    await c.play();
+    backend.calls.clear();
+    c.dispose();
+    expect(backend.calls, contains('dispose'));
+    expect(backend.calls, isNot(contains('stop')));
   });
 
   test('dispose while initialize is in flight does not throw', () async {
