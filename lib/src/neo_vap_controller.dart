@@ -182,7 +182,18 @@ class NeoVapController extends ChangeNotifier {
   void _fail(String message) {
     if (_state == NeoVapState.disposed) return;
     _showPlaceholder = true;
-    _setState(NeoVapState.error);
+    if (_textureId == null) {
+      // Allocation never completed, so there is no texture to latch onto.
+      // Reset to idle (dropping the event subscription initialize() will
+      // re-create, to avoid a double-listen) so a later remount can retry,
+      // instead of being stuck in a permanent error state. Playback failures
+      // keep _textureId and still latch as error below.
+      _sub?.cancel();
+      _sub = null;
+      _setState(NeoVapState.idle);
+    } else {
+      _setState(NeoVapState.error);
+    }
     onError?.call(message);
   }
 
