@@ -56,6 +56,12 @@ class NeoVapRenderer(
     private var outputSurface: Surface? = null
     private val stMatrix = FloatArray(16)
     private var firstFrameSent = false
+
+    // Whether the decoder has actually delivered a frame. onOutputSurfaceAvailable
+    // also calls drawFrame() (to repaint on resume), and at first bind that draws
+    // an empty OES texture — without this gate firstFrame fired there, ~30ms
+    // before ExoPlayer even existed, revealing a blank texture.
+    private var hasDecodedFrame = false
     private var released = false
 
     // Fullscreen quad: pos(-1..1) + texcoord(0..1). Texcoord V is flipped so the
@@ -203,7 +209,10 @@ class NeoVapRenderer(
 
         surfaceTexture = SurfaceTexture(oesTexId).apply {
             setDefaultBufferSize(info.videoWidth, info.videoHeight)
-            setOnFrameAvailableListener { handler.post { drawFrame() } }
+            // hasDecodedFrame is flipped here (and only here) so firstFrame can
+            // never be reported off a bind-time redraw of the empty texture.
+            // Set on the GL thread, so it needs no synchronisation.
+            setOnFrameAvailableListener { handler.post { hasDecodedFrame = true; drawFrame() } }
         }
         inputSurface = Surface(surfaceTexture)
     }
@@ -275,7 +284,7 @@ class NeoVapRenderer(
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
         EGL14.eglSwapBuffers(eglDisplay, windowSurface)
 
-        if (!firstFrameSent) {
+        if (!firstFrameSent && hasDecodedFrame) {
             firstFrameSent = true
             onFirstFrame()
         }
