@@ -81,13 +81,26 @@ class NeoVapPlugin :
 
     /**
      * Warm the GL driver + shader compiler once per process so the first real
-     * `play` doesn't pay the cold EGL-init + program-compile stall. Runs a
-     * throwaway [NeoVapRenderer] init off the main thread and releases it;
-     * best-effort, so any failure just means the first play pays full cold-start.
+     * `play` doesn't pay the cold EGL-init + program-compile stall. Runs off the
+     * main thread; best-effort, so any failure just means the first play pays
+     * full cold-start.
      *
-     * ponytail: GL/compiler warm only, not the decoder — intro→loop is already
-     * gapless and ExoPlayer prepares fast. Add a 1-frame decode warm keyed off
-     * `warmupAsset` if profiling shows first-play codec latency still hurts.
+     * Measured on a vivo V2521 (API 35, Adreno, c2.qti.avc.decoder), profile
+     * build, cold start: native init (asset read + vapc parse + GL + ExoPlayer
+     * construction) is 38-71ms total, of which GL is ~3-27ms. The first real
+     * decoded frame lands at t+313-334ms — i.e. init is only ~15% of
+     * time-to-content. The other ~260ms is downstream of `prepare()`: MediaSource
+     * load and extractor parse (~156ms) then codec init and first decode (~61ms).
+     * Optimising init further has little left to win; that ~260ms is the target.
+     *
+     * Deliberately NOT warmed here: `MediaCodecUtil.warmDecoderInfoCache`.
+     * `getDecoderInfos` is `static synchronized`, so warming it on this thread
+     * does not delete the cost for a play starting moments later — the play just
+     * blocks on the same monitor. It also enumerates the whole MediaCodecList,
+     * which is itself the source of the ~30 AudioCapabilities/VideoCapabilities
+     * "Unsupported mime" warnings (verified on tid neo_vap_prewarm) — so it adds
+     * the log spam it was assumed to avoid. Revisit only with real runway ahead
+     * of the first play.
      */
     private fun prewarm() {
         if (warmed) return

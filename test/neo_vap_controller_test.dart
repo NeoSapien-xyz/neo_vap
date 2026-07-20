@@ -217,12 +217,16 @@ void main() {
     expect(c.state, NeoVapState.disposed);
   });
 
-  test('initialize failure sets error state and fires onError', () async {
+  test('initialize failure resets to idle so a remount can retry', () async {
+    // Texture allocation failing leaves no texture to latch onto, so _fail
+    // resets to idle rather than latching NeoVapState.error — a permanent
+    // error state would leave a remount unable to retry (commit 7e8af39).
+    // Playback failures, which do have a texture, still latch as error.
     backend.failAllocate = true;
     String? err;
     final c = make(onError: (m) => err = m);
     await c.initialize();
-    expect(c.state, NeoVapState.error);
+    expect(c.state, NeoVapState.idle);
     expect(err, isNotNull);
   });
 

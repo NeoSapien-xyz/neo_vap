@@ -5,7 +5,11 @@ import android.net.Uri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.RenderersFactory
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
+import androidx.media3.exoplayer.video.MediaCodecVideoRenderer
 import io.flutter.FlutterInjector
 import io.flutter.view.TextureRegistry.SurfaceProducer
 
@@ -51,7 +55,33 @@ class NeoVapPlayer(
             override fun onSurfaceCleanup() = r.onOutputSurfaceDestroyed()
         })
 
-        player = ExoPlayer.Builder(context).build().apply {
+        // Video-only renderer graph. DefaultRenderersFactory also builds audio
+        // (+ DefaultAudioSink), text, metadata and image renderers, all
+        // synchronously on the main thread. VAP clips carry a single H.264 video
+        // track and no audio (verified with ffprobe across every shipped asset),
+        // so none of that graph can ever be used.
+        //
+        // Measured on a vivo V2521 (API 35), profile build, settled cold starts:
+        // ExoPlayer construction 32ms vs 50ms with the default factory — ~18ms.
+        // Worth keeping, but small: total time-to-first-frame is ~320ms, so this
+        // is ~5% of it. It does NOT remove the AudioCapabilities log spam; that
+        // comes from MediaCodecList enumeration, not from the audio renderer.
+        val renderersFactory = RenderersFactory { handler, videoListener, _, _, _ ->
+            arrayOf(
+                MediaCodecVideoRenderer(
+                    context,
+                    MediaCodecSelector.DEFAULT,
+                    // allowedJoiningTimeMs / maxDroppedFramesToNotify: same values
+                    // DefaultRenderersFactory uses. Only the renderer *set* is
+                    // meant to differ here, not the video renderer's behaviour.
+                    DefaultRenderersFactory.DEFAULT_ALLOWED_VIDEO_JOINING_TIME_MS,
+                    handler,
+                    videoListener,
+                    DefaultRenderersFactory.MAX_DROPPED_VIDEO_FRAME_COUNT_TO_NOTIFY,
+                ),
+            )
+        }
+        player = ExoPlayer.Builder(context, renderersFactory).build().apply {
             setVideoSurface(inputSurface)
             addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(state: Int) {
