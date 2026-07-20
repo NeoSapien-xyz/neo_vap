@@ -1,8 +1,8 @@
 name: neo_vap
 description: "Texture-based transparent (alpha) VAP video player for Flutter"
-version: 0.0.1
-homepage: https://github.com/vaibhavatneosapien/neo_vap
-repository: https://github.com/vaibhavatneosapien/neo_vap
+version: 0.1.0
+homepage: https://github.com/NeoSapien-xyz/neo_vap
+repository: https://github.com/NeoSapien-xyz/neo_vap
 publish_to: none
 
 environment:

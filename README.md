@@ -30,7 +30,8 @@ Not published to pub.dev. Add as a git dependency:
 dependencies:
   neo_vap:
     git:
-      url: https://github.com/vaibhavatneosapien/neo_vap.git
+      url: https://github.com/NeoSapien-xyz/neo_vap.git
+      ref: v0.1.0
 ```
 
 ## Usage
