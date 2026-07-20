@@ -40,6 +40,18 @@ class NeoVapView extends StatefulWidget {
   final String? introAsset;
 
   /// Optional image shown until the first frame renders.
+  ///
+  /// Deliberately unused by the neo onboarding screens: in practice the
+  /// hand-off flashes. The still and the first decoded frame do not land on the
+  /// same pixels at the same moment — the fade runs on `firstFrame`, which fires
+  /// when the texture has a frame, not when the compositor has presented it — so
+  /// the swap reads as a visible blink rather than a seamless reveal. It has
+  /// been added and reverted more than once (neo 65359db5, 9ccb7fd7, 83e62df9).
+  ///
+  /// The blank window it was meant to hide is real (~420ms cold start on a
+  /// mid-range device), but a flash is worse than a wait. Fix the cold start
+  /// instead — keep the controller alive across rebuilds so the texture is never
+  /// torn down. Do not reach for this again without solving the flash first.
   final String? placeholderAsset;
 
   final BoxFit fit;
@@ -127,6 +139,10 @@ class _NeoVapViewState extends State<NeoVapView> {
     );
   }
 
+  /// Height of the aspect box handed to [FittedBox]. Only the ratio matters —
+  /// this just keeps both dimensions far from the sub-pixel truncation floor.
+  static const double _aspectBoxHeight = 1000;
+
   Widget _buildTexture(int textureId) {
     final texture = Texture(textureId: textureId);
     // Explicit override wins; otherwise use the aspect native reported on init.
@@ -135,9 +151,14 @@ class _NeoVapViewState extends State<NeoVapView> {
     return FittedBox(
       fit: widget.fit,
       clipBehavior: Clip.hardEdge,
+      // Scaled, not a unit box: FittedBox only scales the child's *painting*, so
+      // this SizedBox's literal layout size is what Flutter hands the texture
+      // layer. At width: ar, height: 1 a portrait clip (ar < 1) truncates to a
+      // 0-wide texture descriptor in Impeller's GLES path and every frame is
+      // silently dropped. Any non-degenerate size with the same ratio works.
       child: SizedBox(
-        width: ar,
-        height: 1,
+        width: ar * _aspectBoxHeight,
+        height: _aspectBoxHeight,
         child: texture,
       ),
     );
