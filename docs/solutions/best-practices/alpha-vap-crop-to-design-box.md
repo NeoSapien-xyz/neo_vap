@@ -1,6 +1,7 @@
 ---
 title: "Alpha-VAP asset cropping: keep the transparent margins — crop to the design box, not the opaque bbox"
 date: 2026-07-16
+last_refreshed: 2026-07-29
 category: best-practices
 module: neo_vap
 problem_type: best_practice
@@ -24,16 +25,18 @@ related_components: [vapc_parser, neo_vap_example]
 
 ## Context
 
-`neo_vap` plays transparent-alpha VAP videos into a Flutter texture. An alpha VAP is a normal `.mp4` with a **top-bottom layout**: the RGB (color) region sits on top, and a **half-resolution alpha region** sits below it. A top-level mp4 box named `vapc` carries a JSON descriptor:
+`neo_vap` plays transparent-alpha VAP videos into a Flutter texture. An alpha VAP is a normal `.mp4` carrying an RGB (color) region and a **half-resolution alpha region** in one frame. A top-level mp4 box named `vapc` carries a JSON descriptor — this is the shipped pendant's, read back from the file:
 
 ```json
-{"info":{"v":2,"f":218,"w":710,"h":1134,"fps":25,"videoW":710,"videoH":1701,
-         "rgbFrame":[0,0,710,1134],"aFrame":[0,1134,355,567],"isVapx":0,"orien":0}}
+{"info":{"v":2,"f":218,"w":710,"h":1134,"fps":25,"videoW":710,"videoH":1712,
+         "rgbFrame":[0,0,710,1134],"aFrame":[0,1142,355,567],"isVapx":0,"orien":0}}
 ```
 
 - `w`/`h` = **content** size — the composited output the compositor produces.
-- `videoW`/`videoH` = the full mp4 frame (RGB height + half-res alpha height).
+- `videoW`/`videoH` = the full encoded mp4 frame.
 - `rgbFrame`/`aFrame` = `[x,y,w,h]` rects that crop the color and alpha planes out of the mp4.
+
+**The rects decide the layout — there is no fixed one.** The pendant above is top-bottom (alpha below RGB). The `active_mode` clips in the same example app are **side-by-side**: `rgbFrame [0,0,1000,1000]`, `aFrame [1004,0,500,500]` — alpha to the *right*. Nothing in the player assumes stacking; it reads the rects. Do not write code, or a doc, that assumes top-bottom.
 
 The task that produced this learning: an animated pendant asset needed re-cutting. The intuition was "the pendant floats tiny in a huge transparent frame — crop the waste." That intuition was wrong, and cropping tight to the subject produced an asset that "crops from all over the place" and looked broken. This documents why, and the correct re-cut recipe.
 
@@ -70,6 +73,20 @@ info={"info":{"v":2,"f":218,"w":OW,"h":OH,"fps":25,"videoW":OW,"videoH":VIDEOH,
 js=json.dumps(info,separators=(',',':')).encode()
 box=struct.pack('>I',8+len(js))+b'vapc'+js
 open('out_vap.mp4','wb').write(open('out.mp4','rb').read()+box)
+```
+
+**Do not trust the arithmetic — read `VIDEOH` and `AY` back off the encoded file.** The formulas above are what you *intend*; the encoder pads to its own alignment, and none of the four shipped assets match the naive values:
+
+| asset | content `h` | `OH+OH/2` | actual `videoH` | recipe `AY=OH` | actual `aFrame` y |
+|---|---|---|---|---|---|
+| gunmetal pendant | 1134 | 1701 | **1712** | 1134 | **1142** |
+| gunmetal lowres | 846 | 1269 | **1272** | 846 | **847** |
+| active_mode (side-by-side) | 1000 | 1500 | **1008** | 1000 | **0** (x=1004) |
+
+Every one carries a **gutter** between the two regions (8px, 1px, 4px respectively) and an encoded height the formula does not predict. Append a `vapc` built from the arithmetic onto a frame the encoder padded and the rects point at the wrong rows — the alpha plane samples a few lines off, which reads as a soft edge fringe rather than an obvious break, so it survives a casual look. Probe the muxed file first and write those numbers:
+
+```bash
+ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 out.mp4
 ```
 
 Measure the true subject extent (including faint glow) with a **low** cropdetect threshold before choosing the crop:

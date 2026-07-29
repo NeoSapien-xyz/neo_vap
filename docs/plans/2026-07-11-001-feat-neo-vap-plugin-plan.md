@@ -334,9 +334,18 @@ texture architecture removes that seam, a guard asserting dispose releases the t
 prewarm, onboarding migration, removal of `flutter_vap_plus` + hacks, tests + example.
 
 **Deferred to Follow-Up Work:**
-- Graduate `packages/neo_vap` → `NeoSapien-xyz/neo_vap` git-tagged repo (neo_ble model) once API stabilizes.
+- ~~Graduate `packages/neo_vap` → `NeoSapien-xyz/neo_vap` git-tagged repo (neo_ble model) once API stabilizes.~~
+  **DONE** — the plugin lives at `NeoSapien-xyz/neo_vap` and ships as a git-tagged
+  dependency; consumers pin a tag.
 - VAPX-style dynamic text/avatar overlay (not needed — onboarding assets are static).
-- Re-author gunmetal asset tightly-framed via VapTool (cosmetic; `BoxFit.cover` + texture sizing largely resolves it).
+- ~~Re-author gunmetal asset tightly-framed via VapTool (cosmetic; `BoxFit.cover` + texture sizing largely resolves it).~~
+  **DROPPED — this was wrong, not merely deferred.** Tight framing was tried and it
+  broke the asset: an animated subject rotates within its frame, so cropping to the
+  bounding box shoves it into the fixed box edges and hard-clips the glow, and
+  because the subject rotates the clipped edge moves frame to frame. The transparent
+  margins are motion headroom, not waste. The asset is cut at the design-box aspect
+  over the full render height instead, with native-reported aspect + `BoxFit.contain`
+  (not `cover`). See `docs/solutions/best-practices/alpha-vap-crop-to-design-box.md`.
 - Web support (Tencent VAP has web; not needed for the app).
 
 **Outside this product's identity:**

@@ -23,3 +23,15 @@ The two rectangles a VAP frame is split into: the RGB region holds straight (non
 
 ### Motion headroom
 The transparent margin an animated subject is deliberately composed within, giving it room to rotate, scale, or drift across frames without touching the frame edge. It is composition, not wasted space — cropping it away makes the subject collide with a fixed display box and clip as it animates.
+
+## Playback
+
+### Prewarm
+Running the native decode-and-composite pipeline once against throwaway geometry at app start, so the first real clip does not pay the pipeline's one-time setup cost on the critical path.
+
+Best-effort and fire-and-forget by contract: it happens at most once per process, never blocks startup, and every failure path — including one on a platform that has not implemented it — degrades to a slower first play rather than an error the caller can observe. It warms the graphics driver and shader compiler, which are process-global; it does not warm the video decoder, so it removes only the smaller share of cold start.
+
+### First frame
+The point at which a clip's first decoded frame exists in the texture.
+
+Not the point at which that frame is on screen — presentation happens later, and the gap is wide enough to see. Anything that swaps visual state on this signal (retiring a placeholder, fading in) lands before the pixels do and reads as a blink, so it marks "decoding succeeded", not "the clip is visible."

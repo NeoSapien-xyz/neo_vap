@@ -1,7 +1,7 @@
 ---
 title: "Texture-plugin cold-start prewarm: warm off-main, and three fire-and-forget hardening rules"
 date: 2026-07-12
-last_refreshed: 2026-07-16
+last_refreshed: 2026-07-29
 category: architecture-patterns
 module: neo_vap
 problem_type: architecture_pattern
@@ -67,6 +67,31 @@ private fun prewarm() {
     }.apply { name = "neo_vap_prewarm" }.start()
 }
 ```
+
+**Know what the warm cannot reach, and stop there.** The GPU-pipeline warm is the
+part that is genuinely process-global; the decoder is not. Two measurements bound
+this, and both say the same thing — *most of cold start is downstream of the warm*:
+
+- **iOS**, play→first-frame: **88–105 ms warm vs ~111 ms cold.** Prewarm buys
+  5–20 ms. The remaining ~90 ms floor is decoder cold-start (player + first
+  VideoToolbox decode), which warming the Metal pipeline state object does not
+  touch.
+- **Android**: of the cold path, roughly **260 ms sits after `prepare()`** —
+  MediaSource load and extractor parse, then codec init and first decode. Init is
+  the part the warm owns, and it is the smaller part.
+
+So scope the claim honestly: a pipeline prewarm removes the *driver/shader* tax,
+not the *decode* tax. On this plugin 90–110 ms was already imperceptible for an
+onboarding transition, so the warm was kept and decoder warming was not pursued.
+
+The corollary is a real trap. Warming the decoder **looks** like the obvious next
+win and is not: Android's `MediaCodecUtil.warmDecoderInfoCache` is backed by a
+`static synchronized` `getDecoderInfos`, so warming it on the background thread
+does not delete the cost for a play starting moments later — the play just blocks
+on the same monitor. It also enumerates the whole `MediaCodecList`, which is
+itself the source of the ~30 `AudioCapabilities`/`VideoCapabilities` "Unsupported
+mime" warnings, so it *adds* the log spam it is assumed to avoid. Measure which
+half of cold start you are actually paying before warming anything else.
 
 ### Rule 1 — Construct the warm resource *inside* the best-effort try
 
@@ -186,7 +211,12 @@ the warm dispatches off-main via `DispatchQueue.global(qos: .utility)`, all
 construction lives inside `MetalCompositor.init?` (which returns nil instead of
 throwing, satisfying Rule 1), and because the iOS warm dispatches async with no
 main-thread latch, Rule 3 is satisfied by construction — there is nothing to bound.
-Device-verified on a physical iPhone (iOS 26.5).
+Device-verified on a physical iPhone (iOS 26.5), where the play→first-frame
+measurement above (88–105 ms warm, ~111 ms cold) was captured.
+
+Measuring the warm's actual payoff is worth the one log line it costs. It is what
+turns "prewarm makes it faster" into a bounded claim, and it is what justifies
+*not* building the decoder warm — see the ceiling discussed under Rule 0.
 
 ## Related
 
