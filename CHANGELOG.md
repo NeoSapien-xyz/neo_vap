@@ -1,3 +1,9 @@
+## 0.1.1
+
+No plugin code change. `v0.1.0` was tagged one commit before `main`, so the tag
+excluded the example app's lockfile sync. This retag makes the tag and `main`
+the same tree, so a consumer pinning the tag gets exactly what `main` holds.
+
 ## 0.1.0
 
 First tagged release. Texture-based transparent (alpha) VAP video playback on
