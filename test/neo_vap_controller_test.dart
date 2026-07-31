@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neo_vap/neo_vap.dart';
 import 'package:neo_vap/src/neo_vap_method_channel.dart';
@@ -44,6 +45,25 @@ class FakeBackend implements NeoVapBackend {
 
   void emit(NeoVapEvent e) => _events.add(e);
   Future<void> close() => _events.close();
+}
+
+/// A backend whose teardown calls reject the way a real platform does when no
+/// handler answers: the engine sends a null reply and Dart raises
+/// [MissingPluginException]. [FakeBackend]'s methods can never throw, so on its
+/// own it cannot catch an unguarded call — which is exactly how the missing
+/// guards on `stop()`/`dispose()` survived a green suite.
+class RejectingBackend extends FakeBackend {
+  @override
+  Future<void> stop(int textureId) async {
+    calls.add('stop');
+    throw MissingPluginException('No implementation found for method stop');
+  }
+
+  @override
+  Future<void> dispose(int textureId) async {
+    calls.add('dispose');
+    throw MissingPluginException('No implementation found for method dispose');
+  }
 }
 
 void main() {
@@ -279,5 +299,48 @@ void main() {
     await pumpEventQueue();
     expect(ended, isFalse); // must not resurrect playback or misfire onEnd
     expect(c.state, NeoVapState.ready);
+  });
+
+  group('rejecting backend (MissingPluginException)', () {
+    // Both teardown calls run unawaited at their real call sites — a page swipe
+    // stops the off-screen controller, and dispose() fires and forgets — so an
+    // escaping rejection has no caller left to catch it and lands as an
+    // unhandled async error. In a test zone that fails the test, which is the
+    // assertion: these pass only while the guards are in place.
+    late RejectingBackend rejecting;
+
+    setUp(() => rejecting = RejectingBackend());
+    tearDown(() => rejecting.close());
+
+    test('stop() reports the failure and still applies its local intent',
+        () async {
+      final errors = <String>[];
+      final c = NeoVapController(
+        videoAsset: 'loop.mp4',
+        backend: rejecting,
+        onError: errors.add,
+      );
+      await c.initialize();
+      await c.play();
+
+      await c.stop(); // must not throw
+
+      expect(errors.single, contains('stop failed'));
+      expect(c.showPlaceholder, isTrue);
+      // A failed stop is not a render failure — the controller stays usable.
+      expect(c.state, NeoVapState.ready);
+      c.dispose();
+      await pumpEventQueue();
+    });
+
+    test('dispose() swallows the rejection', () async {
+      final c = NeoVapController(videoAsset: 'loop.mp4', backend: rejecting);
+      await c.initialize();
+
+      c.dispose();
+      await pumpEventQueue();
+
+      expect(rejecting.calls, contains('dispose'));
+    });
   });
 }

@@ -145,7 +145,16 @@ class NeoVapController extends ChangeNotifier {
   /// Stop playback and re-show the placeholder.
   Future<void> stop() async {
     if (_textureId == null) return;
-    await _backend.stop(_textureId!);
+    try {
+      await _backend.stop(_textureId!);
+    } catch (e) {
+      // Callers stop unawaited on teardown paths (a page swipe stops the
+      // off-screen controller), so an escaping rejection lands as an unhandled
+      // async error. Report it, but do not latch NeoVapState.error: a failed
+      // stop is not a render failure, and the local intent — placeholder up,
+      // controller still usable — holds whether or not native acknowledged.
+      onError?.call('stop failed: $e');
+    }
     _showPlaceholder = true;
     _setState(NeoVapState.ready);
   }
@@ -208,9 +217,16 @@ class NeoVapController extends ChangeNotifier {
     _sub?.cancel();
     final id = _textureId;
     if (id != null) {
-      // Fire-and-forget: releasing the texture must not block widget teardown,
-      // and there is no per-view MethodChannel to raise MissingPluginException.
-      unawaited(_backend.dispose(id));
+      // Fire-and-forget: releasing the texture must not block widget teardown.
+      //
+      // The catchError is load-bearing. MissingPluginException comes from a null
+      // platform reply, which happens on no registered handler, an uncaught
+      // native throwable, or notImplemented() — channel topology rules out none
+      // of them. What actually protects this plugin is method-name parity with
+      // both native switches plus a single process-wide channel, and neither is
+      // an invariant this line can rely on. Teardown is also the one path with
+      // no caller left to observe a rejection, so swallow it here.
+      unawaited(_backend.dispose(id).catchError((Object _) {}));
     }
     _textureId = null;
     _state = NeoVapState.disposed;

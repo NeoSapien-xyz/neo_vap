@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neo_vap/src/neo_vap_method_channel.dart';
@@ -95,5 +97,44 @@ void main() {
         ['stop', 'dispose', 'prewarm'],
       );
     });
+  });
+
+  test('every method Dart sends is handled by both native switches', () {
+    // The one way this plugin can still raise MissingPluginException in normal
+    // use: add a method to the Dart backend and forget one native switch. That
+    // platform falls through to notImplemented()/FlutterMethodNotImplemented,
+    // the engine replies null, and Dart raises MissingPluginException. Every
+    // other test here installs a mock handler, so none of them can see it.
+    //
+    // ponytail: greps the sources for the literal name rather than parsing
+    // Kotlin/Swift — a name inside a comment would false-pass. Upgrade only if
+    // that ever actually happens; it still catches the real regression.
+    String read(String p) => File(p).readAsStringSync();
+
+    final sent = RegExp(r"""invokeMethod<[^>]*>\(\s*['"](\w+)['"]""")
+        .allMatches(read('lib/src/neo_vap_method_channel.dart'))
+        .map((m) => m.group(1)!)
+        .toSet();
+
+    // Guards the regex itself — a refactor that stops matching would otherwise
+    // make this test pass vacuously against an empty set.
+    expect(
+      sent,
+      containsAll(['allocateTexture', 'play', 'stop', 'dispose']),
+      reason: 'regex no longer matches the Dart invokeMethod call sites',
+    );
+
+    final kotlin =
+        read('android/src/main/kotlin/xyz/neosapien/neo_vap/NeoVapPlugin.kt');
+    final swift = read('ios/Classes/NeoVapPlugin.swift');
+
+    for (final method in sent) {
+      expect(kotlin, contains('"$method"'),
+          reason: 'Android has no handler for "$method" '
+              '-> notImplemented() -> MissingPluginException');
+      expect(swift, contains('"$method"'),
+          reason: 'iOS has no handler for "$method" '
+              '-> FlutterMethodNotImplemented -> MissingPluginException');
+    }
   });
 }

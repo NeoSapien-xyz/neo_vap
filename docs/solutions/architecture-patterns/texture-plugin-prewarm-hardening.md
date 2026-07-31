@@ -128,6 +128,22 @@ must actually be safe: swallow the rejection at the facade so no call site can
 surface it. The native side still logs real warm failures, so visibility is not
 lost.
 
+> **Correction (2026-07-29): this rule is scoped too narrowly above, and it is
+> not prewarm-specific.** "Not yet implemented" is only one of the ways a
+> platform returns a null reply. A **fully implemented** handler produces the
+> identical `MissingPluginException` whenever a `Throwable` escapes it — on
+> Android an uncaught throwable makes the engine send an empty reply, which Dart
+> renders as `MissingPluginException`, not `PlatformException`. So finishing
+> every platform does **not** retire this risk, and the rule applies to *every*
+> unawaited Dart→native call, not just startup ones.
+>
+> This was not hypothetical: `dispose()` and `stop()` in
+> `lib/src/neo_vap_controller.dart` both violated this rule while `prewarm()`
+> obeyed it, in the same file, and 39 green tests could not see it. If you are
+> applying this rule, grep for every `unawaited(` and every bare `await` over a
+> channel call rather than fixing the one in front of you. Full writeup:
+> [`best-practices/test-doubles-that-cannot-fail-hide-missingpluginexception.md`](../best-practices/test-doubles-that-cannot-fail-hide-missingpluginexception.md).
+
 ```dart
 static Future<void> prewarm({String? warmupAsset}) =>
     _sharedBackend
@@ -165,12 +181,12 @@ Each rule turns a specific silent failure into a survivable one:
 - **Rule 1** is the difference between "first play is slightly slow" and "the app
   crashes on launch on some device." The warm exists to *improve* startup; an
   unguarded warm that can crash startup is strictly worse than no warm.
-- **Rule 2** is invisible in single-platform testing and on the platform that
-  *does* implement the handler — it only bites an as-yet-unimplemented platform,
-  every launch, as log noise that masks real errors. Because it is a cross-platform
-  facade over a partially-implemented native contract, the safe default (swallow)
-  must be baked in before the second platform exists, not after someone notices
-  the spam.
+- **Rule 2** is invisible in single-platform testing. The original claim here —
+  that "it only bites an as-yet-unimplemented platform" — was **wrong**, and is
+  corrected in the Rule 2 box above: an implemented handler that lets a
+  `Throwable` escape rejects identically. Treat the swallow as the default for
+  every unawaited Dart→native call, not as a stopgap until the second platform
+  ships.
 - **Rule 3** is a pre-existing hazard the prewarm merely *spotlighted*: the same
   `awaitInputSurface()` latch is on the real-play path on the main thread. Cold-
   start work that can hang must never be awaited unbounded from the UI thread.
@@ -184,8 +200,11 @@ make the degraded outcome explicit.
 
 - Any Flutter plugin that warms a native decode/GPU/codec pipeline at app init
   (video/texture players, camera, ML/GPU inference, map tile renderers).
-- Any fire-and-forget Dart→native call made at startup, **before all target
-  platforms implement it** — the facade needs the `.catchError` from day one.
+- **Any** unawaited Dart→native call, at any point in the lifecycle — not only
+  startup ones, and not only while a platform is unimplemented. The facade needs
+  the `.catchError` from day one and keeps needing it after every platform
+  ships. Teardown calls (`dispose`, route pop, page swipe) are the highest-risk
+  instance, because there is no caller left to observe the rejection.
 - Any place a Dart or native caller blocks on a latch/future waiting for
   render-thread or GPU init that can fail or hang — bound the wait.
 - Confirmed platform-general by this plugin's **iOS Metal prewarm**: the same

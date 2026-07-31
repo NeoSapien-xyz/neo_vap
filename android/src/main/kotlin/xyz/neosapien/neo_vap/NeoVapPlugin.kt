@@ -74,7 +74,15 @@ class NeoVapPlugin :
                 }
                 else -> result.notImplemented()
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            // Throwable, not Exception: Kotlin's Exception and Error are siblings,
+            // so OutOfMemoryError (NeoVapPlayer starts a HandlerThread and builds
+            // an ExoPlayer under allocateTexture/play), UnsatisfiedLinkError, and
+            // ExceptionInInitializerError all escape a `catch (e: Exception)`.
+            // An uncaught throwable here makes DartMessenger send an EMPTY reply,
+            // which Dart surfaces as MissingPluginException — not PlatformException
+            // — i.e. the one failure this plugin's architecture is meant to rule
+            // out would come back through the error handler itself.
             result.error("neo_vap", e.message, null)
         }
     }
