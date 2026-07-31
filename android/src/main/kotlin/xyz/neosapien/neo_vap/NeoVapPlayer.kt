@@ -45,7 +45,19 @@ class NeoVapPlayer(
         // aspect instead of a hardcoded value. Emitted once, before any frame.
         emit("info", "${info.width}x${info.height}")
         val r = NeoVapRenderer(info) { emit("firstFrame", null) }
-        val inputSurface = r.awaitInputSurface()
+        // awaitInputSurface throws on GL-init failure/timeout. At that point `r`
+        // has already started its HandlerThread (+ possibly EGL) but is not yet
+        // assigned to `renderer`, so dispose() could never reclaim it — a
+        // permanent thread/EGL leak that stacks per failed play. Release the
+        // orphan before propagating: a clean init failure reclaims fully; a true
+        // driver wedge reclaims what it can (the wedged thread is unkillable, as
+        // awaitInputSurface() documents). Then rethrow so play()'s catch runs.
+        val inputSurface = try {
+            r.awaitInputSurface()
+        } catch (t: Throwable) {
+            r.release()
+            throw t
+        }
         renderer = r
 
         // Bind the output surface now and on every resume; never cache it.
