@@ -1,3 +1,32 @@
+## 0.1.2
+
+Teardown and error-handling hardening — turns three silent failure modes into
+survivable ones. Found by an adversarial review of the shipping app.
+
+* **Android: `catch (Throwable)` instead of `catch (Exception)`** in
+  `NeoVapPlugin.onMethodCall`. An `OutOfMemoryError`/`UnsatisfiedLinkError`
+  during `allocateTexture`/`play` (which start a HandlerThread and build an
+  ExoPlayer) was escaping the plugin's own error handler, making the engine send
+  an empty reply that Dart raised as `MissingPluginException` — the exact failure
+  the texture architecture exists to prevent. Now surfaced as a clean
+  `PlatformException` the controller already downgrades to a recoverable state.
+* **Dart: `stop()` and `dispose()` no longer leak async rejections.** Both are
+  called unawaited on teardown paths (a page swipe stops the off-screen
+  controller; `dispose()` fires and forgets), so an escaping rejection had no
+  caller left to observe it and landed as an unhandled async error — a
+  Crashlytics non-fatal on every occurrence in an app that forwards zone errors.
+  `stop()` now routes failures to `onError` without latching a render error;
+  `dispose()` swallows the release rejection.
+* **Android: GL-init failure no longer orphans a render thread.** If
+  `awaitInputSurface()` threw (GL init failure/3s timeout), the half-built
+  `NeoVapRenderer` — HandlerThread + EGL already up — was never assigned to the
+  player, so `dispose()` could never reclaim it. It is now released before the
+  error propagates.
+* Tests: a `RejectingBackend` that throws `MissingPluginException` from
+  teardown (a `FakeBackend` whose methods cannot throw could not catch the
+  missing guards), and a source-parity test asserting every method Dart sends is
+  handled by both native switches.
+
 ## 0.1.1
 
 No plugin code change. `v0.1.0` was tagged one commit before `main`, so the tag
